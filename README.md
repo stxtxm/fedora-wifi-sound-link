@@ -132,3 +132,21 @@ MIT — Timo
 Roc Toolkit, PipeWire, FFmpeg, CustomTkinter.
 
 > **Live testé**: ROC Stable 300ms FEC = zéro craquement sur wifi pourri (testé 192.168.1.108 → 192.168.1.101 AudioBox → KRK)
+
+## AppImage
+
+Télécharge la dernière release:
+
+**https://github.com/stxtxm/fedora-wifi-sound-link/releases/latest**
+
+```bash
+chmod +x Fedora_Wifi_Sound_Link-x86_64.AppImage
+./Fedora_Wifi_Sound_Link-x86_64.AppImage
+```
+
+L'AppImage embarque Python + customtkinter + pillow, aucune install nécessaire (sauf ffmpeg/roc sur le système).
+
+Build local:
+```bash
+make appimage  # nécessite appimagetool + mksquashfs
+```

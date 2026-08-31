@@ -5,7 +5,7 @@ PC_IP="${1:-192.168.1.108}"
 CODEC="${2:-pcm}"
 MODE="${3:-stable}"
 PORT="${4:-4711}"
-ROC_PORT="$PORT"; ROC_CTRL=$((PORT+1)); ROC_REPAIR=$((PORT+2))
+ROC_SRC="$PORT"; ROC_CTRL=$((PORT+1))
 
 echo "RPi Receiver $CODEC/$MODE on 0.0.0.0:$PORT -> AudioBox"
 pactl info 2>&1 | grep -E "Default Sink|Server Name" || true
@@ -13,10 +13,10 @@ wpctl status 2>&1 | grep -A3 Sinks | head -10 || true
 
 if [ "$CODEC" = "roc" ]; then
   if command -v roc-recv >/dev/null 2>&1; then
-    LAT="--latency=300"
-    if [ "$MODE" = "fast" ]; then LAT="--latency=80"; fi
-    echo "ROC recv latency $LAT"
-    exec roc-recv -v -o pulse://default --rate 48000 --format s16 --channels 2 -s rtp://0.0.0.0:$ROC_PORT -r rs8m://0.0.0.0:$ROC_REPAIR -c rtcp://0.0.0.0:$ROC_CTRL $LAT --resampler-profile high
+    LAT="300ms"
+    if [ "$MODE" = "fast" ]; then LAT="80ms"; fi
+    echo "ROC recv latency $LAT -> rtp+rs8m://0.0.0.0:$ROC_SRC + rtcp://0.0.0.0:$ROC_CTRL"
+    exec roc-recv -v -o pulse://default -s rtp+rs8m://0.0.0.0:$ROC_SRC -c rtcp://0.0.0.0:$ROC_CTRL --rate 48000 --target-latency=$LAT --resampler-profile=high
   else
     echo "roc-recv manquant fallback PCM stable"
     CODEC="pcm"; MODE="stable"

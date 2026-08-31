@@ -117,12 +117,12 @@ class ModernApp(ctk.CTk):
         mode_card = ctk.CTkFrame(self, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
         mode_card.pack(fill="x", padx=16, pady=6)
         ctk.CTkLabel(mode_card, text="MODE STREAMING", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").pack(anchor="w", padx=14, pady=(10,4))
-        self.preset_var = ctk.StringVar(value="roc_stable")
+        self.preset_var = ctk.StringVar(value="pcm_stable")
         presets = [
-            ("ROC Stable", "roc_stable", "Roc toolkit + FEC • latence 300ms • PARFAIT wifi pourri • qualité studio", "#00d9ff"),
+            ("PCM Stable — RECOMMANDÉ", "pcm_stable", "Lossless • latence 600ms • qualité max • stable wifi pourri", "#00d9ff"),
             ("Opus Stable", "opus_stable", "Opus 192k VBR • 8x moins de bande • transparent", "#7c5cff"),
-            ("PCM Stable", "pcm_stable", "Lossless 1536k • latence 600ms • qualité max", "#5a5e73"),
-            ("PCM Fast", "pcm_fast", "Low latency 60ms • saccades si wifi pourri", "#3a3e4d"),
+            ("PCM Fast", "pcm_fast", "Low latency 60ms • saccades si wifi pourri", "#5a5e73"),
+            ("ROC Stable (beta)", "roc_stable", "Roc toolkit + FEC • 300ms • expérimental roc 0.4 bug sur Fedora", "#ff3b30"),
         ]
         self.preset_frames = {}
         for title, val, desc, color in presets:
@@ -248,6 +248,9 @@ class ModernApp(ctk.CTk):
         if p=="opus_stable": return ("opus","stable")
         if p=="pcm_stable": return ("pcm","stable")
         return ("pcm","fast")
+    def _is_roc_available(self):
+        import shutil
+        return shutil.which("roc-send") is not None and shutil.which("roc-recv") is not None
 
     def scan_network(self):
         self.scan_btn.configure(state="disabled", text="...")
