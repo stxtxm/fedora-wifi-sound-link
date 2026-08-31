@@ -1,0 +1,10 @@
+[project]
+name = "fedora-wifi-sound-link"
+version = "1.0.0"
+description = "PC -> RPi -> KRK streaming, Roc/FEC, anti-saccades"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["customtkinter", "pillow"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

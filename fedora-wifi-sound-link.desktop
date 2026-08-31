@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Fedora Wifi Sound Link
+Comment=PC → RPi → KRK - Streaming studio sans saccade
+Exec=python3 /home/timo/dev/fedora-wifi-sound-link/src/gui/modern_app.py
+Icon=/home/timo/dev/fedora-wifi-sound-link/assets/icon.png
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;
+Keywords=audio;streaming;pipewire;krk;

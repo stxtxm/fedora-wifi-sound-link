@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ master, main ]
+  push:
+    branches: [ master, main, dev ]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          pip install -r requirements.txt 2>/dev/null || pip install customtkinter pillow pytest shellcheck-py 2>/dev/null || true
+          sudo apt-get update && sudo apt-get install -y shellcheck ffmpeg 2>/dev/null || true
+      - name: ShellCheck
+        run: |
+          shellcheck src/stream/*.sh || echo "shellcheck warnings"
+      - name: Python compile
+        run: |
+          python -m py_compile src/gui/*.py
+      - name: Pytest
+        run: |
+          pytest tests/ -v --tb=short || python -m pytest tests/ -v
+      - name: Check assets
+        run: |
+          test -f assets/icon.png || (echo "missing icon" && exit 1)
+          test -f src/stream/pc_sender.sh
+          test -f src/stream/rpi_receiver.sh
+          test -f src/gui/modern_app.py
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build archive
+        run: |
+          tar czf fedora-wifi-sound-link.tar.gz src/ assets/ README.md LICENSE
+          ls -lh *.tar.gz
