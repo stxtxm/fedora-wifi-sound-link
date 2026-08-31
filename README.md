@@ -130,3 +130,5 @@ MIT — Timo
 ### Crédits
 
 Roc Toolkit, PipeWire, FFmpeg, CustomTkinter.
+
+> **Live testé**: ROC Stable 300ms FEC = zéro craquement sur wifi pourri (testé 192.168.1.108 → 192.168.1.101 AudioBox → KRK)
