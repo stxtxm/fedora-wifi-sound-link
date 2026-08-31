@@ -7,10 +7,9 @@ CODEC="${2:-pcm}"
 MODE="${3:-stable}"
 PORT="${4:-4711}"
 
-# Roc ports (si roc)
-ROC_PORT="$PORT"
+# Roc ports (si roc) - rtp+rs8m consolidé + rtcp
+ROC_SRC="$PORT"
 ROC_CTRL=$((PORT+1))
-ROC_REPAIR=$((PORT+2))
 
 MONITOR=$(pactl get-default-sink 2>/dev/null || echo "alsa_output.pci-0000_00_1f.3.analog-stereo")
 MONITOR="${MONITOR}.monitor"
@@ -22,9 +21,10 @@ echo "Monitor: $MONITOR -> $RPI_IP:$PORT ($CODEC/$MODE)"
 if [ "$CODEC" = "roc" ]; then
   if command -v roc-send >/dev/null 2>&1; then
     echo "Mode ROC (real-time streaming, FEC, jitter buffer adaptatif) - QUALITÉ MAX"
-    LAT="--latency=300" # ms, stable même en wifi pourri
-    if [ "$MODE" = "fast" ]; then LAT="--latency=80"; fi
-    exec roc-send -v -i pulse://"$MONITOR" -o rtp+rs8m://$RPI_IP:$ROC_PORT -o rtcp://$RPI_IP:$ROC_CTRL --rate 48000 --format s16 --channels 2 $LAT --resampler-profile high --target-latency $LAT
+    LAT="300ms"
+    if [ "$MODE" = "fast" ]; then LAT="80ms"; fi
+    echo "ROC latency $LAT -> rtp+rs8m://$RPI_IP:$ROC_SRC + rtcp://$RPI_IP:$ROC_CTRL"
+    exec roc-send -v -i pulse://"$MONITOR" -s rtp+rs8m://$RPI_IP:$ROC_SRC -c rtcp://$RPI_IP:$ROC_CTRL --rate 48000 --target-latency=$LAT --resampler-profile=high
   else
     echo "roc-send manquant, fallback PCM stable"
     CODEC="pcm"; MODE="stable"

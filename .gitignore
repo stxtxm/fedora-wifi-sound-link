@@ -9,3 +9,4 @@ venv/
 *.wav
 *.mp3
 .env
+dist/
