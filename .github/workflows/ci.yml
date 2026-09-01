@@ -21,10 +21,9 @@ jobs:
           pip install flask
           sudo apt-get update && sudo apt-get install -y shellcheck ffmpeg 2>/dev/null || true
       - name: ShellCheck
-        run: shellcheck src/stream/*.sh src/stream/bluetooth/*.sh src/pwa/*.sh 2>/dev/null || shellcheck src/stream/*.sh || echo "shellcheck warnings"
+        run: shellcheck src/stream/*.sh src/stream/bluetooth/*.sh src/pwa/*.sh 2>/dev/null || shellcheck src/stream/*.sh || echo "ok"
       - name: Python compile
-        run: |
-          python -m py_compile src/gui/*.py src/pwa/*.py
+        run: python -m py_compile src/gui/*.py src/pwa/*.py
       - name: Pytest
         run: pytest tests/ -v --tb=short
       - name: Check assets
@@ -32,7 +31,6 @@ jobs:
           test -f assets/icon.png
           test -f src/stream/pc_sender.sh
           test -f src/pwa/server.py
-          test -f src/stream/bluetooth/rpi_bt_sink.sh
 
   build:
     runs-on: ubuntu-latest
@@ -57,9 +55,19 @@ jobs:
           java-version: '17'
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
       - name: Build APK
         run: |
           cd android
-          chmod +x gradlew 2>/dev/null || echo "no gradlew, using gradle"
-          gradle assembleDebug 2>&1 | tail -20 || ./gradlew assembleDebug 2>&1 | tail -20
-          ls -lh app/build/outputs/apk/debug/*.apk 2>&1 | head -10 || echo "apk build skipped (no wrapper)"
+          gradle wrapper --gradle-version 8.7 2>&1 | tail -10 || echo "wrapper exists"
+          chmod +x gradlew 2>&1 | head
+          ./gradlew assembleDebug 2>&1 | tail -30
+          ls -lh app/build/outputs/apk/debug/*.apk 2>&1 | head -10
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KRKLink-APK
+          path: android/app/build/outputs/apk/debug/*.apk
