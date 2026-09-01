@@ -150,3 +150,40 @@ Build local:
 ```bash
 make appimage  # nécessite appimagetool + mksquashfs
 ```
+
+## 📱 Téléphone → Pi → KRK (Bluetooth)
+
+Le Pi est aussi une enceinte Bluetooth pour ton tel.
+
+### PWA (recommandé, sans install)
+1. Sur le Pi, le serveur PWA tourne déjà (port 8080) via `krk-pwa.service`
+2. Sur ton tel (même WiFi), ouvre `http://192.168.1.101:8080` ou `http://raspberrypi.local:8080`
+3. **Installer** → Ajouter à l'écran d'accueil → PWA
+4. Dans la PWA: **Rendre visible** → sur ton tel: Bluetooth → appaire `raspberrypi` → joue de la musique → son sur KRK
+
+API PWA:
+- `GET /api/status` → état BT + volume
+- `POST /api/bt/discoverable` → rend Pi visible
+- `POST /api/bt/scan` → scan BT
+- `POST /api/volume` → `{"volume": 60}`
+
+### APK Android
+APK WebView qui encapsule la PWA + permissions Bluetooth.
+
+- Source: `android/` (gradle)
+- Build: `cd android && ./gradlew assembleDebug` (nécessite Android SDK)
+- CI build l'APK automatiquement (GitHub Actions)
+- Release: `KRKLink.apk` dans https://github.com/stxtxm/fedora-wifi-sound-link/releases
+
+```bash
+adb install KRKLink.apk
+# Ouvre l'app → elle charge http://192.168.1.101:8080
+```
+
+### Mode Bluetooth dans la GUI PC
+Onglet **Bluetooth** dans la GUI moderne:
+- `Scan BT` → détecte `raspberrypi` (MAC `2C:CF:67:00:AC:EE`)
+- `Pair + Connect` → `bluetoothctl pair/trust/connect` + `pactl set-default-sink bluez_output...` + route `module-loopback` vers AudioBox
+- `Power ON` → `rfkill unblock` + `bluetoothctl discoverable on` sur Pi
+
+> Responsive: GUI s'adapte à toutes les tailles (min 380px), scrollable, VU réactif.

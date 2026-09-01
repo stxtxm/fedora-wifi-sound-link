@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Fedora Wifi Sound Link - Modern Compact GUI
-# Design ultra moderne, dark, compact, icon réelle
+# Fedora Wifi Sound Link - Modern Responsive GUI + Bluetooth
+# Compact, dark, icon réelle, tabs WiFi/Bluetooth, responsive
 import customtkinter as ctk
 import tkinter as tk
 from pathlib import Path
@@ -12,10 +12,13 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 SRC_STREAM = PROJECT_DIR / "src" / "stream"
 PC_STREAM = SRC_STREAM / "pc_sender.sh"
 RPI_RECEIVE = SRC_STREAM / "rpi_receiver.sh"
+BT_RPI = SRC_STREAM / "bluetooth" / "rpi_bt_sink.sh"
+BT_PC = SRC_STREAM / "bluetooth" / "pc_bt_connect.sh"
 ASSETS = PROJECT_DIR / "assets"
 ICON = ASSETS / "icon-256.png"
 
 DEFAULT_PI_IP = "192.168.1.101"
+DEFAULT_PI_MAC = "2C:CF:67:00:AC:EE"
 DEFAULT_USER = "timo"
 DEFAULT_PASS = "1010"
 
@@ -43,13 +46,18 @@ class ModernApp(ctk.CTk):
         super().__init__()
         self.pc_ip = get_pc_ip()
         self.title("Fedora Wifi Sound Link")
-        self.geometry("520x720")
-        self.minsize(520, 640)
+        # Responsive: petite taille initiale mais resizable, minsize compact
+        self.geometry("540x780")
+        self.minsize(380, 600)
+        # Allow resizing - responsive
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
         # icon
         try:
             if ICON.exists():
                 img = Image.open(ICON)
                 self.icon_img = ctk.CTkImage(light_image=img, dark_image=img, size=(28,28))
+                self.icon_img_small = ctk.CTkImage(light_image=img, dark_image=img, size=(20,20))
             else:
                 self.icon_img = None
         except:
@@ -61,7 +69,6 @@ class ModernApp(ctk.CTk):
                 self.iconphoto(True, self.tk_icon)
         except: pass
 
-        # colors
         self.bg = "#0f1115"
         self.card_bg = "#1a1d24"
         self.card_border = "#2a2e39"
@@ -69,60 +76,115 @@ class ModernApp(ctk.CTk):
         self.accent2 = "#00d9ff"
         self.configure(fg_color=self.bg)
 
-        # Header
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=16, pady=(14,8))
+        # Main container with grid for responsiveness
+        self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        # Header fixed
+        header = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=16, pady=(12,6))
+        header.grid_columnconfigure(0, weight=1)
         left = ctk.CTkFrame(header, fg_color="transparent")
-        left.pack(side="left", fill="x", expand=True)
+        left.grid(row=0, column=0, sticky="w")
         if self.icon_img:
             ctk.CTkLabel(left, image=self.icon_img, text="").pack(side="left", padx=(0,10))
         title_box = ctk.CTkFrame(left, fg_color="transparent")
         title_box.pack(side="left")
-        ctk.CTkLabel(title_box, text="FEDORA WIFI SOUND LINK", font=ctk.CTkFont(size=13, weight="bold"), text_color="white").pack(anchor="w")
-        ctk.CTkLabel(title_box, text=f"PC {self.pc_ip}  →  AudioBox USB 96  →  KRK", font=ctk.CTkFont(size=10), text_color="#8b8fa3").pack(anchor="w")
-        self.status_dot = ctk.CTkLabel(header, text="●", font=ctk.CTkFont(size=18), text_color="#ff3b30")
-        self.status_dot.pack(side="right", padx=4)
+        ctk.CTkLabel(title_box, text="FEDORA WIFI SOUND LINK", font=ctk.CTkFont(size=12, weight="bold"), text_color="white").pack(anchor="w")
+        ctk.CTkLabel(title_box, text=f"PC {self.pc_ip} → KRK", font=ctk.CTkFont(size=10), text_color="#8b8fa3").pack(anchor="w")
+        self.status_dot = ctk.CTkLabel(header, text="●", font=ctk.CTkFont(size=16), text_color="#ff3b30")
+        self.status_dot.grid(row=0, column=1, padx=4, sticky="e")
         self.status_txt = ctk.CTkLabel(header, text="déconnecté", font=ctk.CTkFont(size=11), text_color="#8b8fa3")
-        self.status_txt.pack(side="right")
+        self.status_txt.grid(row=0, column=2, padx=2, sticky="e")
 
-        # Pi card
-        pi_card = ctk.CTkFrame(self, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
-        pi_card.pack(fill="x", padx=16, pady=6)
-        ctk.CTkLabel(pi_card, text="RASPBERRY PI", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").pack(anchor="w", padx=14, pady=(10,2))
-        row1 = ctk.CTkFrame(pi_card, fg_color="transparent")
-        row1.pack(fill="x", padx=12, pady=4)
+        # Scrollable content for responsiveness
+        self.scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent", scrollbar_button_color="#252836", scrollbar_button_hover_color="#2a2e39")
+        self.scroll.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+        self.scroll.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_rowconfigure(1, weight=1)
+
+        # Transport Tabs - WiFi / Bluetooth
+        self.tabview = ctk.CTkTabview(self.scroll, width=500, height=320, fg_color=self.card_bg, segmented_button_fg_color="#0f1115", segmented_button_selected_color=self.accent, segmented_button_unselected_color="#252836", segmented_button_selected_hover_color="#6b4feb", text_color="white", corner_radius=14, border_width=1, border_color=self.card_border)
+        self.tabview.pack(fill="x", padx=16, pady=6, expand=False)
+        self.tabview.add("WiFi")
+        self.tabview.add("Bluetooth")
+        # Set WiFi as default, but allow Bluetooth
+        self.tabview.set("WiFi")
+
+        # --- WiFi Tab ---
+        wifi = self.tabview.tab("WiFi")
+        wifi.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(wifi, text="WIFI  •  RTP/UDP  •  ROC/FEC", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").pack(anchor="w", padx=8, pady=(6,2))
+        # Pi IP row responsive with grid
+        row1 = ctk.CTkFrame(wifi, fg_color="transparent")
+        row1.pack(fill="x", padx=8, pady=4)
+        row1.grid_columnconfigure(0, weight=1)
         self.pi_ip_var = ctk.StringVar(value=DEFAULT_PI_IP)
-        self.pi_entry = ctk.CTkEntry(row1, width=130, placeholder_text="192.168.1.101", textvariable=self.pi_ip_var, corner_radius=8, border_color=self.card_border, fg_color="#0f1115")
-        self.pi_entry.pack(side="left", padx=4)
+        self.pi_entry = ctk.CTkEntry(row1, placeholder_text="192.168.1.101", textvariable=self.pi_ip_var, corner_radius=8, border_color=self.card_border, fg_color="#0f1115")
+        self.pi_entry.grid(row=0, column=0, sticky="ew", padx=2)
         self.user_var = ctk.StringVar(value=DEFAULT_USER)
-        ctk.CTkEntry(row1, width=70, placeholder_text="user", textvariable=self.user_var, corner_radius=8, border_color=self.card_border, fg_color="#0f1115").pack(side="left", padx=4)
+        e2 = ctk.CTkEntry(row1, width=70, placeholder_text="user", textvariable=self.user_var, corner_radius=8, border_color=self.card_border, fg_color="#0f1115")
+        e2.grid(row=0, column=1, padx=2)
         self.pass_var = ctk.StringVar(value=DEFAULT_PASS)
-        self.pass_entry = ctk.CTkEntry(row1, width=80, placeholder_text="pass", textvariable=self.pass_var, show="*", corner_radius=8, border_color=self.card_border, fg_color="#0f1115")
-        self.pass_entry.pack(side="left", padx=4)
+        e3 = ctk.CTkEntry(row1, width=80, placeholder_text="pass", textvariable=self.pass_var, show="*", corner_radius=8, border_color=self.card_border, fg_color="#0f1115")
+        e3.grid(row=0, column=2, padx=2)
         self.scan_btn = ctk.CTkButton(row1, text="Scan", width=60, height=28, corner_radius=8, fg_color="#252836", hover_color="#2a2e39", command=self.scan_network, font=ctk.CTkFont(size=11))
-        self.scan_btn.pack(side="left", padx=4)
+        self.scan_btn.grid(row=0, column=3, padx=2)
 
-        row2 = ctk.CTkFrame(pi_card, fg_color="transparent")
-        row2.pack(fill="x", padx=12, pady=(2,8))
-        self.test_btn = ctk.CTkButton(row2, text="Tester", width=80, height=26, corner_radius=8, fg_color="transparent", border_width=1, border_color=self.card_border, command=self.test_ssh, font=ctk.CTkFont(size=11))
-        self.test_btn.pack(side="left", padx=4)
+        row2 = ctk.CTkFrame(wifi, fg_color="transparent")
+        row2.pack(fill="x", padx=8, pady=2)
+        self.test_btn = ctk.CTkButton(row2, text="Tester SSH", width=90, height=26, corner_radius=8, fg_color="transparent", border_width=1, border_color=self.card_border, command=self.test_ssh, font=ctk.CTkFont(size=11))
+        self.test_btn.pack(side="left", padx=2)
         self.pi_state = ctk.CTkLabel(row2, text="non testé", font=ctk.CTkFont(size=11), text_color="#8b8fa3")
-        self.pi_state.pack(side="left", padx=10)
-        self.scan_list_frame = ctk.CTkScrollableFrame(pi_card, height=70, fg_color="#0f1115", corner_radius=8, border_width=1, border_color=self.card_border)
-        self.scan_list_frame.pack(fill="x", padx=12, pady=(0,10))
-        self.scan_buttons = []
-        ctk.CTkLabel(self.scan_list_frame, text="Lance un scan pour détecter le Pi avec AudioBox", font=ctk.CTkFont(size=11), text_color="#5a5e73").pack(pady=20)
+        self.pi_state.pack(side="left", padx=8)
+        self.scan_list_frame = ctk.CTkScrollableFrame(wifi, height=70, fg_color="#0f1115", corner_radius=8, border_width=1, border_color=self.card_border)
+        self.scan_list_frame.pack(fill="x", padx=8, pady=(4,6))
+        ctk.CTkLabel(self.scan_list_frame, text="Scan pour détecter le Pi AudioBox", font=ctk.CTkFont(size=11), text_color="#5a5e73").pack(pady=12)
 
-        # Mode card
-        mode_card = ctk.CTkFrame(self, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
+        # --- Bluetooth Tab ---
+        bt = self.tabview.tab("Bluetooth")
+        bt.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(bt, text="BLUETOOTH  •  A2DP  •  Pi comme enceinte", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").pack(anchor="w", padx=8, pady=(6,2))
+        ctk.CTkLabel(bt, text="Le Pi devient une enceinte Bluetooth. Le son du PC sortira sur les KRK via BT.", font=ctk.CTkFont(size=9), text_color="#5a5e73", wraplength=460).pack(anchor="w", padx=8)
+        b_row1 = ctk.CTkFrame(bt, fg_color="transparent")
+        b_row1.pack(fill="x", padx=8, pady=6)
+        b_row1.grid_columnconfigure(0, weight=1)
+        self.bt_mac_var = ctk.StringVar(value=DEFAULT_PI_MAC)
+        ctk.CTkLabel(b_row1, text="MAC Pi:").grid(row=0, column=0, padx=2)
+        self.bt_mac_entry = ctk.CTkEntry(b_row1, textvariable=self.bt_mac_var, width=140, corner_radius=8, border_color=self.card_border, fg_color="#0f1115", placeholder_text="2C:CF:67:00:AC:EE")
+        self.bt_mac_entry.grid(row=0, column=1, sticky="ew", padx=4)
+        self.bt_scan_btn = ctk.CTkButton(b_row1, text="Scan BT", width=80, height=28, corner_radius=8, fg_color="#252836", hover_color="#2a2e39", command=self.scan_bluetooth, font=ctk.CTkFont(size=11))
+        self.bt_scan_btn.grid(row=0, column=2, padx=4)
+        self.bt_power_btn = ctk.CTkButton(b_row1, text="Power ON", width=80, height=28, corner_radius=8, fg_color="transparent", border_width=1, border_color=self.card_border, command=self.bt_power, font=ctk.CTkFont(size=11))
+        self.bt_power_btn.grid(row=0, column=3, padx=2)
+
+        b_row2 = ctk.CTkFrame(bt, fg_color="transparent")
+        b_row2.pack(fill="x", padx=8, pady=4)
+        self.bt_connect_btn = ctk.CTkButton(b_row2, text="Pair + Connect", height=28, corner_radius=8, fg_color=self.accent2, text_color="#0f1115", hover_color="#00c4e6", command=self.bt_connect, font=ctk.CTkFont(size=11, weight="bold"))
+        self.bt_connect_btn.pack(side="left", padx=2, fill="x", expand=True)
+        self.bt_disconnect_btn = ctk.CTkButton(b_row2, text="Disconnect", width=90, height=28, corner_radius=8, fg_color="#1a1d24", border_width=1, border_color=self.card_border, command=self.bt_disconnect, font=ctk.CTkFont(size=11))
+        self.bt_disconnect_btn.pack(side="left", padx=4)
+        self.bt_status = ctk.CTkLabel(b_row2, text="BT non testé", font=ctk.CTkFont(size=11), text_color="#8b8fa3")
+        self.bt_status.pack(side="left", padx=6)
+
+        self.bt_list_frame = ctk.CTkScrollableFrame(bt, height=80, fg_color="#0f1115", corner_radius=8, border_width=1, border_color=self.card_border)
+        self.bt_list_frame.pack(fill="x", padx=8, pady=4)
+        ctk.CTkLabel(self.bt_list_frame, text="Scan BT pour trouver raspberrypi", font=ctk.CTkFont(size=11), text_color="#5a5e73").pack(pady=12)
+        # BT status line
+        self.bt_info = ctk.CTkLabel(bt, text="Pi: discoverable ? • PC: powered ?", font=ctk.CTkFont(size=9), text_color="#5a5e73")
+        self.bt_info.pack(anchor="w", padx=8, pady=2)
+
+        # Mode card responsive
+        mode_card = ctk.CTkFrame(self.scroll, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
         mode_card.pack(fill="x", padx=16, pady=6)
+        mode_card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(mode_card, text="MODE STREAMING", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").pack(anchor="w", padx=14, pady=(10,4))
         self.preset_var = ctk.StringVar(value="pcm_stable")
         presets = [
-            ("PCM Stable — RECOMMANDÉ", "pcm_stable", "Lossless • latence 600ms • qualité max • stable wifi pourri", "#00d9ff"),
-            ("Opus Stable", "opus_stable", "Opus 192k VBR • 8x moins de bande • transparent", "#7c5cff"),
+            ("PCM Stable — RECOMMANDÉ", "pcm_stable", "Lossless • 600ms • stable wifi pourri", "#00d9ff"),
+            ("Opus Stable", "opus_stable", "Opus 192k • 8x moins de bande • transparent", "#7c5cff"),
             ("PCM Fast", "pcm_fast", "Low latency 60ms • saccades si wifi pourri", "#5a5e73"),
-            ("ROC Stable (beta)", "roc_stable", "Roc toolkit + FEC • 300ms • expérimental roc 0.4 bug sur Fedora", "#ff3b30"),
+            ("ROC Stable (beta)", "roc_stable", "Roc + FEC • 300ms • expérimental", "#ff3b30"),
         ]
         self.preset_frames = {}
         for title, val, desc, color in presets:
@@ -141,57 +203,65 @@ class ModernApp(ctk.CTk):
             self.preset_frames[val] = f
         self.update_preset_ui()
 
-        # Control card
-        ctrl = ctk.CTkFrame(self, fg_color="transparent")
+        # Control card responsive
+        ctrl = ctk.CTkFrame(self.scroll, fg_color="transparent")
         ctrl.pack(fill="x", padx=16, pady=8)
-        self.connect_btn = ctk.CTkButton(ctrl, text="▶  CONNECTER", height=42, corner_radius=10, fg_color=self.accent, hover_color="#6b4feb", font=ctk.CTkFont(size=13, weight="bold"), command=self.connect)
-        self.connect_btn.pack(side="left", fill="x", expand=True, padx=(0,6))
+        ctrl.grid_columnconfigure(0, weight=1)
+        self.connect_btn = ctk.CTkButton(ctrl, text="▶  CONNECTER WIFI", height=42, corner_radius=10, fg_color=self.accent, hover_color="#6b4feb", font=ctk.CTkFont(size=13, weight="bold"), command=self.connect)
+        self.connect_btn.grid(row=0, column=0, sticky="ew", padx=(0,4))
         self.stop_btn = ctk.CTkButton(ctrl, text="■", width=48, height=42, corner_radius=10, fg_color="#1a1d24", border_width=1, border_color=self.card_border, hover_color="#252836", font=ctk.CTkFont(size=16), command=self.disconnect)
-        self.stop_btn.pack(side="left", padx=2)
+        self.stop_btn.grid(row=0, column=1, padx=2)
         self.tone_btn = ctk.CTkButton(ctrl, text="♪", width=48, height=42, corner_radius=10, fg_color="#1a1d24", border_width=1, border_color=self.card_border, hover_color="#252836", font=ctk.CTkFont(size=16), command=self.test_tone)
-        self.tone_btn.pack(side="left", padx=(6,0))
+        self.tone_btn.grid(row=0, column=2, padx=(4,0))
 
-        # Volume card
-        vol_card = ctk.CTkFrame(self, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
+        # Volume card responsive
+        vol_card = ctk.CTkFrame(self.scroll, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
         vol_card.pack(fill="x", padx=16, pady=4)
+        vol_card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(vol_card, text="VOLUME KRK", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").pack(anchor="w", padx=14, pady=(8,2))
         vol_row = ctk.CTkFrame(vol_card, fg_color="transparent")
-        vol_row.pack(fill="x", padx=12, pady=(2,8))
-        ctk.CTkLabel(vol_row, text="◂", text_color="#5a5e73").pack(side="left")
+        vol_row.pack(fill="x", padx=12, pady=(2,4))
+        vol_row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(vol_row, text="◂", text_color="#5a5e73").grid(row=0, column=0)
         self.vol_var = tk.IntVar(value=40)
-        self.vol_slider = ctk.CTkSlider(vol_row, from_=0, to=100, variable=self.vol_var, width=260, height=16, button_color=self.accent, button_hover_color="#6b4feb", progress_color=self.accent, fg_color="#2a2e39", command=self.on_vol_drag)
-        self.vol_slider.pack(side="left", padx=8, fill="x", expand=True)
-        ctk.CTkLabel(vol_row, text="▸", text_color="#5a5e73").pack(side="left")
+        self.vol_slider = ctk.CTkSlider(vol_row, from_=0, to=100, variable=self.vol_var, height=16, button_color=self.accent, button_hover_color="#6b4feb", progress_color=self.accent, fg_color="#2a2e39", command=self.on_vol_drag)
+        self.vol_slider.grid(row=0, column=1, sticky="ew", padx=8)
+        ctk.CTkLabel(vol_row, text="▸", text_color="#5a5e73").grid(row=0, column=2)
         self.vol_label = ctk.CTkLabel(vol_row, text="40%", font=ctk.CTkFont(size=12, weight="bold"), text_color="white", width=45)
-        self.vol_label.pack(side="left", padx=6)
+        self.vol_label.grid(row=0, column=3, padx=4)
         self.vol_apply = ctk.CTkButton(vol_row, text="OK", width=40, height=26, corner_radius=8, fg_color="#252836", hover_color="#2a2e39", command=self.apply_volume, font=ctk.CTkFont(size=11))
-        self.vol_apply.pack(side="left", padx=4)
-        # VU meter canvas
+        self.vol_apply.grid(row=0, column=4, padx=2)
         self.vu_canvas = tk.Canvas(vol_card, height=18, bg="#0f1115", highlightthickness=0)
         self.vu_canvas.pack(fill="x", padx=14, pady=(0,8))
         self.draw_vu(0)
+        # Make VU responsive on resize
+        self.bind("<Configure>", lambda e: self.draw_vu(0.02))
 
-        # Logs (collapsible)
-        log_card = ctk.CTkFrame(self, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
+        # Logs responsive expand
+        log_card = ctk.CTkFrame(self.scroll, fg_color=self.card_bg, corner_radius=14, border_width=1, border_color=self.card_border)
         log_card.pack(fill="both", expand=True, padx=16, pady=(4,10))
+        log_card.grid_columnconfigure(0, weight=1)
+        log_card.grid_rowconfigure(1, weight=1)
         log_head = ctk.CTkFrame(log_card, fg_color="transparent")
-        log_head.pack(fill="x", padx=12, pady=6)
-        ctk.CTkLabel(log_head, text="LOGS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").pack(side="left")
+        log_head.grid(row=0, column=0, sticky="ew", padx=12, pady=6)
+        log_head.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(log_head, text="LOGS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#8b8fa3").grid(row=0, column=0, sticky="w")
         self.log_btn = ctk.CTkButton(log_head, text="↻", width=30, height=22, corner_radius=6, fg_color="transparent", border_width=1, border_color=self.card_border, command=self.refresh_logs, font=ctk.CTkFont(size=12))
-        self.log_btn.pack(side="right", padx=4)
-        ctk.CTkButton(log_head, text="clear", width=45, height=22, corner_radius=6, fg_color="transparent", border_width=1, border_color=self.card_border, command=lambda: self.log.delete("1.0","end"), font=ctk.CTkFont(size=11)).pack(side="right", padx=4)
-        self.log = ctk.CTkTextbox(log_card, height=110, font=ctk.CTkFont(family="Monospace", size=11), fg_color="#0f1115", border_width=0, text_color="#a8adc3")
-        self.log.pack(fill="both", expand=True, padx=8, pady=(0,8))
+        self.log_btn.grid(row=0, column=2, padx=2)
+        ctk.CTkButton(log_head, text="clear", width=45, height=22, corner_radius=6, fg_color="transparent", border_width=1, border_color=self.card_border, command=lambda: self.log.delete("1.0","end"), font=ctk.CTkFont(size=11)).grid(row=0, column=1, padx=2)
+        self.log = ctk.CTkTextbox(log_card, height=120, font=ctk.CTkFont(family="Monospace", size=11), fg_color="#0f1115", border_width=0, text_color="#a8adc3")
+        self.log.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0,8))
 
-        # footer
-        footer = ctk.CTkLabel(self, text="Fedora Wifi Sound Link  •  github.com/timo/fedora-wifi-sound-link  •  Roc • Opus • PCM", font=ctk.CTkFont(size=9), text_color="#5a5e73")
-        footer.pack(pady=(0,8))
+        # footer inside scroll for responsiveness
+        footer = ctk.CTkLabel(self.scroll, text="Fedora Wifi Sound Link  •  github.com/stxtxm/fedora-wifi-sound-link  •  WiFi + Bluetooth", font=ctk.CTkFont(size=9), text_color="#5a5e73")
+        footer.pack(pady=(4,10))
 
         self.after(800, self.fetch_volume)
         self.after(1500, self.auto_status)
         self.after(100, self.vu_animate)
-        self.log_msg(f"Prêt. PC {self.pc_ip} → Scan pour trouver le Pi AudioBox")
-        self.log_msg("Recommandé: ROC Stable (FEC) pour wifi pourri, latence 300ms, qualité studio sans craquement")
+        self.after(1000, self.update_bt_info)
+        self.log_msg(f"Prêt. PC {self.pc_ip} — Responsive • WiFi + Bluetooth")
+        self.log_msg("WiFi: PCM Stable recommandé • Bluetooth: appaire le Pi comme enceinte")
 
     def select_preset(self, val):
         self.preset_var.set(val)
@@ -199,38 +269,29 @@ class ModernApp(ctk.CTk):
     def update_preset_ui(self):
         sel = self.preset_var.get()
         for k, f in self.preset_frames.items():
-            if k == sel:
-                f.configure(border_color=self.accent, border_width=2)
-            else:
-                f.configure(border_color=self.card_border, border_width=1)
+            f.configure(border_color=self.accent if k==sel else self.card_border, border_width=2 if k==sel else 1)
 
     def draw_vu(self, level):
-        self.vu_canvas.delete("all")
-        w = self.vu_canvas.winfo_width() or 480
-        h = 18
-        # background bar
-        self.vu_canvas.create_rectangle(0,4,w,14, fill="#2a2e39", outline="", width=0)
-        # level bar with gradient
-        lv = int(w * min(max(level,0),1))
-        if lv>0:
-            # gradient from accent to accent2
-            self.vu_canvas.create_rectangle(0,4,lv,14, fill=self.accent, outline="")
-            # peak
-            if level>0.85:
-                self.vu_canvas.create_rectangle(lv-3,2,lv,16, fill="#ff3b30", outline="")
-        # ticks
-        for i in range(5):
-            x = int(w * i/4)
-            self.vu_canvas.create_line(x,4,x,14, fill="#0f1115", width=1)
+        try:
+            self.vu_canvas.delete("all")
+            w = self.vu_canvas.winfo_width() or self.vu_canvas.winfo_reqwidth() or 480
+            if w < 10: w = 480
+            self.vu_canvas.create_rectangle(0,4,w,14, fill="#2a2e39", outline="", width=0)
+            lv = int(w * min(max(level,0),1))
+            if lv>0:
+                self.vu_canvas.create_rectangle(0,4,lv,14, fill=self.accent, outline="")
+                if level>0.85:
+                    self.vu_canvas.create_rectangle(lv-3,2,lv,16, fill="#ff3b30", outline="")
+            for i in range(5):
+                x = int(w * i/4)
+                self.vu_canvas.create_line(x,4,x,14, fill="#0f1115", width=1)
+        except: pass
 
     def vu_animate(self):
-        # animate based on audio level if connected, else idle
         import random, math
         try:
             if "connecté" in self.status_txt.cget("text"):
-                # simule vu ou lit vrai niveau via pactl?
                 lvl = 0.15 + 0.3*abs(math.sin(time.time()*3)) + random.random()*0.15
-                # si besoin, lire vrai niveau via ssh: wpctl get-volume etc, mais simu suffit
                 self.draw_vu(lvl)
             else:
                 self.draw_vu(0.02 + 0.02*math.sin(time.time()*1.5))
@@ -248,10 +309,8 @@ class ModernApp(ctk.CTk):
         if p=="opus_stable": return ("opus","stable")
         if p=="pcm_stable": return ("pcm","stable")
         return ("pcm","fast")
-    def _is_roc_available(self):
-        import shutil
-        return shutil.which("roc-send") is not None and shutil.which("roc-recv") is not None
 
+    # WiFi methods (same as before, compact)
     def scan_network(self):
         self.scan_btn.configure(state="disabled", text="...")
         for w in self.scan_list_frame.winfo_children():
@@ -287,7 +346,6 @@ class ModernApp(ctk.CTk):
             if not found:
                 self.after(0, lambda: ctk.CTkLabel(self.scan_list_frame, text="Aucun Pi AudioBox — vérifie USB", text_color="#ff3b30").pack())
             self.after(0, lambda: self.scan_btn.configure(state="normal", text="Scan"))
-            # clear initial label
             try:
                 for w in list(self.scan_list_frame.winfo_children()):
                     if isinstance(w, ctk.CTkLabel) and "Scan 192" in w.cget("text"):
@@ -321,7 +379,7 @@ class ModernApp(ctk.CTk):
             if m:
                 try:
                     v=float(m.group(1))*100
-                    self.vol_var.set(int(v)); self.vol_label.configure(text=f"{int(v)}%")
+                    self.after(0, lambda: (self.vol_var.set(int(v)), self.vol_label.configure(text=f"{int(v)}%")))
                 except: pass
         threading.Thread(target=do, daemon=True).start()
 
@@ -336,9 +394,125 @@ class ModernApp(ctk.CTk):
             self.log_msg(out.strip())
         threading.Thread(target=do, daemon=True).start()
 
+    # Bluetooth methods
+    def update_bt_info(self):
+        def do():
+            out,_=run_cmd("bluetoothctl show 2>&1 | grep -E 'Powered|Name' | head -5", timeout=2)
+            out2,_=run_cmd(f"sshpass -p '{self.pass_var.get()}' ssh -o StrictHostKeyChecking=no {self.user_var.get()}@{self.pi_ip_var.get()} \"bluetoothctl show 2>&1 | grep -E 'Powered|Discoverable|Pairable' | head -5\" 2>&1", timeout=3)
+            self.after(0, lambda: self.bt_info.configure(text=f"PC: {'ON' if 'Powered: yes' in out else 'OFF'} • Pi: {'discoverable' if 'Discoverable: yes' in out2 else 'off'} | {self.bt_mac_var.get()}"))
+        threading.Thread(target=do, daemon=True).start()
+        self.after(5000, self.update_bt_info)
+
+    def bt_power(self):
+        self.log_msg("Bluetooth power ON + Pi discoverable ON")
+        def do():
+            out,_=run_cmd("rfkill unblock bluetooth; bluetoothctl power on 2>&1 | head -5; bluetoothctl show 2>&1 | grep Powered", timeout=4)
+            self.log_msg(out)
+            ip=self.pi_ip_var.get().strip(); user=self.user_var.get().strip(); pwd=self.pass_var.get()
+            out2,_=run_cmd(f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no {user}@{ip} \"{shlex.quote(str(BT_RPI))} discoverable 2>&1 | head -10; {shlex.quote(str(BT_RPI))} status 2>&1 | head -20\" 2>&1", timeout=5)
+            self.log_msg(out2)
+            self.after(0, self.update_bt_info)
+        threading.Thread(target=do, daemon=True).start()
+
+    def scan_bluetooth(self):
+        self.bt_scan_btn.configure(state="disabled", text="...")
+        for w in self.bt_list_frame.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(self.bt_list_frame, text="Scan Bluetooth 8s...", text_color="#8b8fa3").pack(pady=10)
+        def do():
+            self.log_msg("Scan BT 8s...")
+            # Use bluetoothctl scan
+            out,_=run_cmd("timeout 9 bash -c 'bluetoothctl scan on 2>&1 & pid=$!; sleep 8; bluetoothctl scan off 2>&1 | head -5; wait $pid 2>/dev/null; bluetoothctl devices 2>&1' 2>&1", timeout=12)
+            self.log_msg(out[:800])
+            # Parse devices
+            found=False
+            for line in out.splitlines():
+                m=re.search(r"Device\s+([0-9A-F:]{17})\s+(.+)", line, re.I)
+                if m:
+                    mac=m.group(1); name=m.group(2)
+                    found=True
+                    is_pi = "raspberry" in name.lower() or mac.upper()==self.bt_mac_var.get().upper()
+                    txt=f"{mac}  •  {name} {'✓ Pi' if is_pi else ''}"
+                    col=self.accent if is_pi else self.card_border
+                    def make(mac=mac):
+                        b=ctk.CTkButton(self.bt_list_frame, text=txt, height=28, corner_radius=8, fg_color="#1a1d24", border_width=1, border_color=col, hover_color="#252836", command=lambda mac=mac: (self.bt_mac_var.set(mac), self.log_msg(f"MAC {mac} sélectionnée")))
+                        b.pack(fill="x", pady=2, padx=4)
+                    self.after(0, make)
+            # Also try direct RPi MAC
+            if not found:
+                self.log_msg("Aucun device BT trouvé, vérifie Pi discoverable")
+                self.after(0, lambda: ctk.CTkLabel(self.bt_list_frame, text="Aucun device — Pi discoverable ON ?", text_color="#ff3b30").pack())
+            # Clear scanning label
+            try:
+                for w in list(self.bt_list_frame.winfo_children()):
+                    if isinstance(w, ctk.CTkLabel) and "Scan Bluetooth" in w.cget("text"):
+                        w.destroy()
+            except: pass
+            self.after(0, lambda: self.bt_scan_btn.configure(state="normal", text="Scan BT"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def bt_connect(self):
+        mac=self.bt_mac_var.get().strip()
+        if not re.match(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac, re.I):
+            self.log_msg(f"MAC invalide: {mac}")
+            return
+        self.log_msg(f"BT Pair+Connect {mac} (A2DP Sink)...")
+        self.bt_connect_btn.configure(state="disabled", text="...")
+        def do():
+            # Ensure Pi discoverable
+            ip=self.pi_ip_var.get().strip(); user=self.user_var.get().strip(); pwd=self.pass_var.get()
+            out,_=run_cmd(f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no {user}@{ip} \"{shlex.quote(str(BT_RPI))} setup 2>&1 | tail -10\" 2>&1", timeout=6)
+            self.log_msg(out)
+            # PC side: pair, trust, connect
+            for step in [
+                f"bluetoothctl pair {mac} 2>&1 | tail -10",
+                f"bluetoothctl trust {mac} 2>&1 | tail -5",
+                f"bluetoothctl connect {mac} 2>&1 | tail -20",
+            ]:
+                out,_=run_cmd(step, timeout=10)
+                self.log_msg(out)
+                time.sleep(1)
+            # Check sink
+            out,_=run_cmd("pactl list short sinks 2>&1 | grep bluez | head -5; pactl info 2>&1 | grep 'Default Sink'", timeout=3)
+            self.log_msg(out)
+            if "bluez" in out.lower():
+                # Set default sink to BT
+                m=re.search(r"(bluez_output\.[^\s]+)", out)
+                if m:
+                    sink=m.group(1)
+                    run_cmd(f"pactl set-default-sink {shlex.quote(sink)} 2>&1", timeout=2)
+                    self.log_msg(f"Default sink -> {sink} (PC audio vers Pi)")
+                    self.bt_status.configure(text="● BT connecté", text_color="#00d68f")
+                    self.status_dot.configure(text_color="#00d68f"); self.status_txt.configure(text="BT connecté ✓")
+                else:
+                    self.bt_status.configure(text="● connect partiel", text_color="#ff9f0a")
+            else:
+                self.bt_status.configure(text="● BT échec", text_color="#ff3b30")
+                self.log_msg("Pas de sink bluez, vérifie appairage Pi")
+            # Route on Pi side if needed
+            out2,_=run_cmd(f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no {user}@{ip} \"{shlex.quote(str(BT_RPI))} route 2>&1 | tail -10; {shlex.quote(str(BT_RPI))} status 2>&1 | head -20\" 2>&1", timeout=5)
+            self.log_msg(out2)
+            self.after(0, lambda: self.bt_connect_btn.configure(state="normal", text="Pair + Connect"))
+        threading.Thread(target=do, daemon=True).start()
+
+    def bt_disconnect(self):
+        mac=self.bt_mac_var.get().strip()
+        self.log_msg(f"BT Disconnect {mac}")
+        def do():
+            out,_=run_cmd(f"bluetoothctl disconnect {mac} 2>&1 | tail -10", timeout=5)
+            self.log_msg(out)
+            self.bt_status.configure(text="● BT déconnecté", text_color="#8b8fa3")
+            self.status_dot.configure(text_color="#ff3b30"); self.status_txt.configure(text="déconnecté")
+        threading.Thread(target=do, daemon=True).start()
+
     def connect(self):
         codec, mode = self.get_preset()
         ip=self.pi_ip_var.get().strip(); user=self.user_var.get().strip(); pwd=self.pass_var.get(); pc_ip=self.pc_ip
+        # If Bluetooth tab active, do BT connect instead?
+        current = self.tabview.get()
+        if current == "Bluetooth":
+            self.bt_connect()
+            return
         self.log_msg(f"CONNECT {codec}/{mode} {pc_ip} -> {ip}:4711")
         self.connect_btn.configure(state="disabled", text="Connexion...")
         def do():
@@ -351,7 +525,7 @@ class ModernApp(ctk.CTk):
             out,_=run_cmd(f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no {user}@{ip} \"nohup /tmp/rpi_receiver.sh {pc_ip} {codec} {mode} 4711 > /tmp/rpi_recv.log 2>&1 & sleep 1; cat /tmp/rpi_recv.log | head -25; ps aux | grep -E 'ffmpeg|roc-recv' | grep -v grep\" 2>&1", timeout=6)
             self.log_msg(out)
             if not PC_STREAM.exists():
-                self.log_msg(f"ERR {PC_STREAM}"); self.connect_btn.configure(state="normal", text="▶  CONNECTER"); return
+                self.log_msg(f"ERR {PC_STREAM}"); self.connect_btn.configure(state="normal", text="▶  CONNECTER WIFI"); return
             cmd=f"nohup {shlex.quote(str(PC_STREAM))} {ip} {codec} {mode} 4711 > /tmp/pc_stream.log 2>&1 & echo $!"
             out,_=run_cmd(cmd, timeout=4)
             self.log_msg(f"PC PID {out.strip()}")
@@ -368,22 +542,36 @@ class ModernApp(ctk.CTk):
             else:
                 self.status_dot.configure(text_color="#ff9f0a"); self.status_txt.configure(text="erreur")
                 self.log_msg("Erreur voir logs")
-            self.connect_btn.configure(state="normal", text="▶  CONNECTER")
+            self.connect_btn.configure(state="normal", text="▶  CONNECTER WIFI")
         threading.Thread(target=do, daemon=True).start()
 
     def disconnect(self):
+        # Disconnect both WiFi and BT
         ip=self.pi_ip_var.get().strip(); user=self.user_var.get().strip(); pwd=self.pass_var.get()
-        self.log_msg("STOP")
+        self.log_msg("STOP (WiFi + BT)")
         def do():
             run_cmd("pkill -9 ffmpeg; pkill -9 roc-send; echo pc stop", timeout=3)
             out,_=run_cmd(f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no {user}@{ip} \"pkill -9 ffmpeg; pkill -9 roc-recv; echo rpi stop; ps aux | grep -E 'ffmpeg|roc' | grep -v grep || echo clean\" 2>&1", timeout=4)
             self.log_msg(out)
+            # BT disconnect also
+            mac=self.bt_mac_var.get().strip()
+            run_cmd(f"bluetoothctl disconnect {mac} 2>&1 | tail -5", timeout=3)
             self.status_dot.configure(text_color="#ff3b30"); self.status_txt.configure(text="déconnecté")
+            self.bt_status.configure(text="● BT déconnecté", text_color="#8b8fa3")
         threading.Thread(target=do, daemon=True).start()
 
     def test_tone(self):
-        self.log_msg("Tone 440Hz 3s...")
+        # If BT tab active, test via BT sink, else WiFi
+        current = self.tabview.get()
+        self.log_msg(f"Tone 440Hz 3s via {current}...")
         def do():
+            # For BT, ensure default sink is BT when BT tab
+            if current=="Bluetooth":
+                mac=self.bt_mac_var.get().strip()
+                # check sink
+                out,_=run_cmd("pactl list short sinks 2>&1 | grep bluez | head -1", timeout=2)
+                if "bluez" not in out:
+                    self.log_msg("Pas de sink BT, tone sur default")
             run_cmd("timeout 4 ffmpeg -hide_banner -loglevel error -f lavfi -i \"sine=frequency=440:duration=3,volume=0.5\" -f pulse default 2>&1", timeout=5)
             self.log_msg("Tone envoyé")
         threading.Thread(target=do, daemon=True).start()
@@ -403,12 +591,18 @@ class ModernApp(ctk.CTk):
             ip=self.pi_ip_var.get(); user=self.user_var.get(); pwd=self.pass_var.get()
             out2,_=run_cmd(f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no {user}@{ip} \"ps aux | grep -E 'ffmpeg|roc-recv' | grep -v grep\" 2>&1", timeout=3)
             rpi=bool(out2.strip())
+            # BT status
+            out3,_=run_cmd("bluetoothctl info 2C:CF:67:00:AC:EE 2>&1 | grep Connected | head -1", timeout=2)
+            bt = "Connected: yes" in out3
             if pc and rpi:
-                self.status_dot.configure(text_color="#00d68f"); self.status_txt.configure(text="connecté ✓")
+                self.after(0, lambda: (self.status_dot.configure(text_color="#00d68f"), self.status_txt.configure(text="WiFi connecté ✓")))
+            elif bt:
+                self.after(0, lambda: (self.status_dot.configure(text_color="#00d9ff"), self.status_txt.configure(text="BT connecté ✓")))
             elif pc or rpi:
-                self.status_dot.configure(text_color="#ff9f0a"); self.status_txt.configure(text="partiel")
+                self.after(0, lambda: (self.status_dot.configure(text_color="#ff9f0a"), self.status_txt.configure(text="partiel")))
             else:
-                self.status_dot.configure(text_color="#ff3b30"); self.status_txt.configure(text="déconnecté")
+                if not bt:
+                    self.after(0, lambda: (self.status_dot.configure(text_color="#ff3b30"), self.status_txt.configure(text="déconnecté")))
         threading.Thread(target=do, daemon=True).start()
         self.after(4000, self.auto_status)
 

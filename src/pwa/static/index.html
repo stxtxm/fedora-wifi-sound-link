@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0f1115">
+<title>KRK Link • Pi</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1115;--card:#1a1d24;--border:#2a2e39;--accent:#7c5cff;--accent2:#00d9ff;--text:#fff;--muted:#8b8fa3}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;display:flex;flex-direction:column}
+header{padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;background:rgba(15,17,21,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);z-index:10}
+header img{width:32px;height:32px;border-radius:8px}
+header h1{font-size:14px;letter-spacing:.04em}
+header p{font-size:11px;color:var(--muted)}
+#dot{margin-left:auto;font-size:18px;color:#ff3b30}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;margin:10px 12px;padding:12px}
+.card h2{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:8px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{appearance:none;border:1px solid var(--border);background:#252836;color:#fff;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;flex:1;min-width:0}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.accent2{background:var(--accent2);border-color:var(--accent2);color:#0f1115}
+button:active{transform:scale(.98)}
+input[type=range]{flex:1;accent-color:var(--accent)}
+pre{background:#0f1115;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto;color:#a8adc3}
+.badge{font-size:11px;padding:4px 8px;border-radius:20px;background:#252836;color:var(--muted);border:1px solid var(--border)}
+.dev{padding:8px;border-radius:8px;background:#0f1115;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;margin:6px 0}
+.dev small{color:var(--muted);font-size:11px}
+@media(min-width:600px){body{max-width:520px;margin:0 auto}}
+</style>
+</head>
+<body>
+<header>
+<img src="icon.png" alt="">
+<div><h1>FEDORA WIFI SOUND LINK</h1><p>Pi → AudioBox → KRK • Tel</p></div>
+<span id="dot">●</span>
+</header>
+
+<div class="card">
+<h2>BLUETOOTH • PI VISIBLE</h2>
+<div class="row">
+<button class="primary" onclick="setDisc(true)">Rendre visible 3 min</button>
+<button onclick="setDisc(false)">Cacher</button>
+<button onclick="refresh()">↻ Refresh</button>
+</div>
+<pre id="btStatus">...</pre>
+</div>
+
+<div class="card">
+<h2>APPAREILS BLUETOOTH</h2>
+<div class="row" style="margin-bottom:8px">
+<button class="accent2" onclick="scanBT()">🔍 Scanner 8s</button>
+<button onclick="listPaired()">Paired</button>
+</div>
+<div id="devs"></div>
+<pre id="scanLog" style="display:none"></pre>
+</div>
+
+<div class="card">
+<h2>VOLUME KRK • AudioBox</h2>
+<div class="row">
+<span>◂</span><input id="vol" type="range" min="0" max="100" value="40" oninput="volLabel(this.value)"><span>▸</span>
+<span id="volLabel" style="min-width:40px;font-weight:700">40%</span>
+<button style="flex:0 0 60px" onclick="setVol()">OK</button>
+</div>
+<div style="height:8px;background:#2a2e39;border-radius:20px;overflow:hidden;margin-top:8px"><div id="vu" style="height:100%;width:40%;background:var(--accent)"></div></div>
+</div>
+
+<div class="card">
+<h2>CONNEXION TÉLÉPHONE</h2>
+<p style="font-size:12px;color:var(--muted);line-height:1.4">
+1. Sur le Pi: <b>Rendre visible</b><br>
+2. Sur ton tel: Réglages → Bluetooth → cherche <b>raspberrypi</b> → appaire<br>
+3. Lance de la musique → son sort sur les KRK<br>
+4. Cette PWA permet de contrôler le volume et voir l'état sans quitter l'app.
+</p>
+<div class="row" style="margin-top:10px">
+<button onclick="installPWA()" id="installBtn" style="display:none">⬇ Installer PWA</button>
+<button onclick="share()">Partager</button>
+</div>
+</div>
+
+<div class="card">
+<h2>LOGS</h2>
+<pre id="log"></pre>
+</div>
+
+<script>
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').style.display='block'});
+function installPWA(){if(deferredPrompt){deferredPrompt.prompt()}}
+function log(m){const el=document.getElementById('log');el.textContent+=m+"\n";el.scrollTop=el.scrollHeight}
+async function api(p,opts={}){try{let r=await fetch(p,{...opts,headers:{'Content-Type':'application/json'}});let j=await r.json();return j}catch(e){return {error:e.toString()}}}
+async function refresh(){
+  let j=await api('/api/status');
+  document.getElementById('btStatus').textContent=(j.bluetooth||'')+"\\n"+(j.sink||'')+"\\n"+(j.volume||'')+"\\n"+(j.audiobox||'');
+  let m=j.volume&&j.volume.match(/Volume:\\s*([\\d\\.]+)/);if(m){let v=Math.round(parseFloat(m[1])*100);document.getElementById('vol').value=v;document.getElementById('volLabel').textContent=v+'%';document.getElementById('vu').style.width=v+'%'}
+  document.getElementById('dot').style.color=j.audiobox&&j.audiobox.includes('AudioBox')?'#00d68f':'#ff3b30';
+  log('status refresh');
+}
+async function setDisc(on){
+  log(on?'visible ON':'visible OFF');
+  let j=await api('/api/bt/discoverable',{method:'POST',body:JSON.stringify({on})});
+  log(j.out||JSON.stringify(j)); refresh();
+}
+async function scanBT(){
+  log('scan BT 8s...');
+  let j=await api('/api/bt/scan',{method:'POST'});
+  let out=j.out||''; document.getElementById('scanLog').style.display='block';document.getElementById('scanLog').textContent=out;
+  let devs=document.getElementById('devs');devs.innerHTML='';
+  out.split('\\n').forEach(l=>{
+    let m=l.match(/Device\\s+([0-9A-F:]{17})\\s+(.+)/i);
+    if(m){let mac=m[1],name=m[2];
+      let d=document.createElement('div');d.className='dev';
+      d.innerHTML=`<div><b>\${name}</b><br><small>\${mac}</small></div><div><button onclick="connectBT('\${mac}')">Connect</button></div>`;
+      devs.appendChild(d);
+    }
+  });
+  if(!devs.children.length) devs.innerHTML='<small style="color:#8b8fa3">Aucun device trouvé — tel en recherche ?</small>';
+}
+async function listPaired(){
+  let j=await api('/api/status'); let out=(j.paired||'')+"\\n"+(j.devices||'');
+  document.getElementById('scanLog').style.display='block';document.getElementById('scanLog').textContent=out;
+}
+async function connectBT(mac){
+  log('connect '+mac);
+  let j=await api('/api/bt/connect',{method:'POST',body:JSON.stringify({mac})});
+  log(j.out||JSON.stringify(j)); refresh();
+}
+function volLabel(v){document.getElementById('volLabel').textContent=v+'%';document.getElementById('vu').style.width=v+'%'}
+async function setVol(){
+  let v=document.getElementById('vol').value;
+  let j=await api('/api/volume',{method:'POST',body:JSON.stringify({volume:parseInt(v)})});
+  log(j.out||JSON.stringify(j));
+}
+function share(){
+  if(navigator.share) navigator.share({title:'KRK Link',url:location.href});
+  else {navigator.clipboard.writeText(location.href); log('URL copiée')}
+}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+refresh();
+setInterval(refresh,5000);
+// VU idle
+setInterval(()=>{
+  let v=parseInt(document.getElementById('vol').value);
+  let wobble = 0.9 + Math.sin(Date.now()/300)*0.07;
+  document.getElementById('vu').style.width = (v*wobble)+'%';
+},120);
+</script>
+</body>
+</html>
