@@ -62,10 +62,12 @@ jobs:
       - name: Build APK
         run: |
           cd android
-          gradle wrapper --gradle-version 8.7 2>&1 | tail -10 || echo "wrapper exists"
-          chmod +x gradlew 2>&1 | head
-          ./gradlew assembleDebug 2>&1 | tail -30
-          ls -lh app/build/outputs/apk/debug/*.apk 2>&1 | head -10
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          cat local.properties
+          gradle wrapper --gradle-version 8.7 || echo "wrapper exists"
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+          ls -lh app/build/outputs/apk/debug/*.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
