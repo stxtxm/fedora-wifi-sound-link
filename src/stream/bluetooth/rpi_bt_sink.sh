@@ -5,22 +5,40 @@ ACTION="${1:-setup}" # setup, discoverable, status, route
 case "$ACTION" in
   setup)
     echo "=== RPi BT Sink setup ==="
-    # Assure PipeWire bluetooth
-    systemctl --user is-active pipewire 2>&1 | head
-    # Active bluetooth
-    bluetoothctl power on 2>&1 | head
-    bluetoothctl discoverable on 2>&1 | head
-    bluetoothctl pairable on 2>&1 | head
-    bluetoothctl agent NoInputNoOutput 2>&1 | head
-    bluetoothctl default-agent 2>&1 | head
+    systemctl --user is-active pipewire 2>&1 | head -3
+    systemctl --user is-active wireplumber 2>&1 | head -3
+    # Active bluetooth + reste visible
+    rfkill unblock bluetooth 2>/dev/null || true
+    bluetoothctl power on 2>&1 | head -3
+    sleep 1
+    bluetoothctl discoverable on 2>&1 | head -3
+    bluetoothctl pairable on 2>&1 | head -3
+    bluetoothctl discoverable-timeout 0 2>&1 | head -3
+    # Agent NoInputNoOutput en daemon (accepte tout sans écran)
+    pkill -f "bluetoothctl --agent" 2>/dev/null || true
+    nohup bluetoothctl --agent NoInputNoOutput > /tmp/bt_agent.log 2>&1 &
+    sleep 1
+    bluetoothctl default-agent 2>&1 | head -3 || echo "agent déjà par défaut"
     echo "Discoverable: $(bluetoothctl show 2>&1 | grep Discoverable)"
     echo "Pairable: $(bluetoothctl show 2>&1 | grep Pairable)"
-    # Vérifie AudioBox sink
-    SINK=$(pactl info 2>&1 | grep "Default Sink" || wpctl status 2>&1 | grep -A2 Sinks | grep AudioBox)
+    SINK=$(pactl get-default-sink 2>&1)
     echo "Sink AudioBox: $SINK"
+    wpctl status 2>&1 | grep -A5 "Sinks:" | head -15
     echo "En attente de connexion Bluetooth depuis PC..."
-    # WirePlumber linkera auto le bluez_input vers AudioBox
-    # On peut forcer avec pw-link si besoin
+    echo "WirePlumber route auto bluez_input -> AudioBox, sinon lance: $0 route"
+    # Lance un watcher en arrière-plan pour auto-route
+    nohup bash -c 'while true; do
+      BT_SRC=$(pactl list short sources 2>&1 | grep bluez | grep input | head -1 | awk "{print \$2}")
+      SINK=$(pactl get-default-sink 2>&1)
+      if [ -n "$BT_SRC" ] && [ -n "$SINK" ]; then
+        if ! pactl list short modules 2>&1 | grep -q "source=$BT_SRC.*sink=$SINK"; then
+          echo "[watcher] Routing $BT_SRC -> $SINK"
+          pactl load-module module-loopback source="$BT_SRC" sink="$SINK" latency_msec=50 2>&1 | head -3
+        fi
+      fi
+      sleep 2
+    done' > /tmp/bt_watcher.log 2>&1 &
+    echo "Watcher Bluetooth -> KRK lancé (PID $!)"
     ;;
   discoverable)
     bluetoothctl discoverable on
