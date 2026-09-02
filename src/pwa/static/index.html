@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#0f1115">
-<title>KRK Link • Pi</title>
+<title>KRK Link • WiFi & BT</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.png">
 <style>
@@ -21,41 +21,28 @@ header p{font-size:11px;color:var(--muted)}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 button{appearance:none;border:1px solid var(--border);background:#252836;color:#fff;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;flex:1;min-width:0}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-button.accent2{background:var(--accent2);border-color:var(--accent2);color:#0f1115}
+button.danger{background:#ff3b30;border-color:#ff3b30;color:#fff}
 button:active{transform:scale(.98)}
 input[type=range]{flex:1;accent-color:var(--accent)}
-pre{background:#0f1115;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto;color:#a8adc3}
-.badge{font-size:11px;padding:4px 8px;border-radius:20px;background:#252836;color:var(--muted);border:1px solid var(--border)}
-.dev{padding:8px;border-radius:8px;background:#0f1115;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;margin:6px 0}
-.dev small{color:var(--muted);font-size:11px}
+pre{background:#0f1115;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:140px;overflow:auto;color:#a8adc3}
 @media(min-width:600px){body{max-width:520px;margin:0 auto}}
 </style>
 </head>
 <body>
 <header>
 <img src="icon.png" alt="">
-<div><h1>FEDORA WIFI SOUND LINK</h1><p>Pi → AudioBox → KRK • Tel</p></div>
+<div><h1>FEDORA WIFI SOUND LINK</h1><p>PC / Tel → Pi → AudioBox → KRK</p></div>
 <span id="dot">●</span>
 </header>
 
 <div class="card">
-<h2>BLUETOOTH • PI VISIBLE</h2>
+<h2>STREAMING WIFI (PC → Pi)</h2>
+<p style="font-size:11px;color:var(--muted);margin-bottom:8px">Contrôle le récepteur audio sur le Pi pour recevoir le flux WiFi du PC.</p>
 <div class="row">
-<button class="primary" onclick="setDisc(true)">Rendre visible 3 min</button>
-<button onclick="setDisc(false)">Cacher</button>
-<button onclick="refresh()">↻ Refresh</button>
+<button class="primary" onclick="wifiAction('start')">▶ Activer Récepteur WiFi</button>
+<button class="danger" onclick="wifiAction('stop')">■ Arrêter</button>
 </div>
-<pre id="btStatus">...</pre>
-</div>
-
-<div class="card">
-<h2>APPAREILS BLUETOOTH</h2>
-<div class="row" style="margin-bottom:8px">
-<button class="accent2" onclick="scanBT()">🔍 Scanner 8s</button>
-<button onclick="listPaired()">Paired</button>
-</div>
-<div id="devs"></div>
-<pre id="scanLog" style="display:none"></pre>
+<pre id="wifiStatus" style="margin-top:8px">Statut...</pre>
 </div>
 
 <div class="card">
@@ -69,17 +56,11 @@ pre{background:#0f1115;border:1px solid var(--border);border-radius:8px;padding:
 </div>
 
 <div class="card">
-<h2>CONNEXION TÉLÉPHONE</h2>
-<p style="font-size:12px;color:var(--muted);line-height:1.4">
-1. Sur le Pi: <b>Rendre visible</b><br>
-2. Sur ton tel: Réglages → Bluetooth → cherche <b>raspberrypi</b> → appaire<br>
-3. Lance de la musique → son sort sur les KRK<br>
-4. Cette PWA permet de contrôler le volume et voir l'état sans quitter l'app.
+<h2>BLUETOOTH TÉLÉPHONE</h2>
+<p style="font-size:11px;color:var(--muted);line-height:1.4">
+Le Bluetooth fonctionne en direct sans WiFi : appaire ton téléphone à <b>raspberrypi</b> et lance ta musique.
 </p>
-<div class="row" style="margin-top:10px">
-<button onclick="installPWA()" id="installBtn" style="display:none">⬇ Installer PWA</button>
-<button onclick="share()">Partager</button>
-</div>
+<pre id="btInfo">...</pre>
 </div>
 
 <div class="card">
@@ -88,45 +69,17 @@ pre{background:#0f1115;border:1px solid var(--border);border-radius:8px;padding:
 </div>
 
 <script>
-let deferredPrompt=null;
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').style.display='block'});
-function installPWA(){if(deferredPrompt){deferredPrompt.prompt()}}
 function log(m){const el=document.getElementById('log');el.textContent+=m+"\n";el.scrollTop=el.scrollHeight}
 async function api(p,opts={}){try{let r=await fetch(p,{...opts,headers:{'Content-Type':'application/json'}});let j=await r.json();return j}catch(e){return {error:e.toString()}}}
 async function refresh(){
   let j=await api('/api/status');
-  document.getElementById('btStatus').textContent=(j.bluetooth||'')+"\\n"+(j.sink||'')+"\\n"+(j.volume||'')+"\\n"+(j.audiobox||'');
-  let m=j.volume&&j.volume.match(/Volume:\\s*([\\d\\.]+)/);if(m){let v=Math.round(parseFloat(m[1])*100);document.getElementById('vol').value=v;document.getElementById('volLabel').textContent=v+'%';document.getElementById('vu').style.width=v+'%'}
-  document.getElementById('dot').style.color=j.audiobox&&j.audiobox.includes('AudioBox')?'#00d68f':'#ff3b30';
-  log('status refresh');
+  document.getElementById('wifiStatus').textContent = "Récepteur WiFi: " + (j.wifi_streaming ? "ACTIF ✓" : "ARRÊTÉ") + "\n" + (j.sink||'') + "\n" + (j.bt_connected||'BT: Déconnecté');
+  let m=j.volume&&j.volume.match(/Volume:\s*([\d\.]+)/);if(m){let v=Math.round(parseFloat(m[1])*100);document.getElementById('vol').value=v;document.getElementById('volLabel').textContent=v+'%';document.getElementById('vu').style.width=v+'%'}
+  document.getElementById('dot').style.color=j.wifi_streaming?'#00d68f':'#ff3b30';
 }
-async function setDisc(on){
-  log(on?'visible ON':'visible OFF');
-  let j=await api('/api/bt/discoverable',{method:'POST',body:JSON.stringify({on})});
-  log(j.out||JSON.stringify(j)); refresh();
-}
-async function scanBT(){
-  log('scan BT 8s...');
-  let j=await api('/api/bt/scan',{method:'POST'});
-  let out=j.out||''; document.getElementById('scanLog').style.display='block';document.getElementById('scanLog').textContent=out;
-  let devs=document.getElementById('devs');devs.innerHTML='';
-  out.split('\\n').forEach(l=>{
-    let m=l.match(/Device\\s+([0-9A-F:]{17})\\s+(.+)/i);
-    if(m){let mac=m[1],name=m[2];
-      let d=document.createElement('div');d.className='dev';
-      d.innerHTML=`<div><b>\${name}</b><br><small>\${mac}</small></div><div><button onclick="connectBT('\${mac}')">Connect</button></div>`;
-      devs.appendChild(d);
-    }
-  });
-  if(!devs.children.length) devs.innerHTML='<small style="color:#8b8fa3">Aucun device trouvé — tel en recherche ?</small>';
-}
-async function listPaired(){
-  let j=await api('/api/status'); let out=(j.paired||'')+"\\n"+(j.devices||'');
-  document.getElementById('scanLog').style.display='block';document.getElementById('scanLog').textContent=out;
-}
-async function connectBT(mac){
-  log('connect '+mac);
-  let j=await api('/api/bt/connect',{method:'POST',body:JSON.stringify({mac})});
+async function wifiAction(act){
+  log('WiFi '+act);
+  let j=await api('/api/wifi/'+act,{method:'POST',body:JSON.stringify({codec:'pcm',mode:'stable'})});
   log(j.out||JSON.stringify(j)); refresh();
 }
 function volLabel(v){document.getElementById('volLabel').textContent=v+'%';document.getElementById('vu').style.width=v+'%'}
@@ -135,19 +88,7 @@ async function setVol(){
   let j=await api('/api/volume',{method:'POST',body:JSON.stringify({volume:parseInt(v)})});
   log(j.out||JSON.stringify(j));
 }
-function share(){
-  if(navigator.share) navigator.share({title:'KRK Link',url:location.href});
-  else {navigator.clipboard.writeText(location.href); log('URL copiée')}
-}
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
-refresh();
-setInterval(refresh,5000);
-// VU idle
-setInterval(()=>{
-  let v=parseInt(document.getElementById('vol').value);
-  let wobble = 0.9 + Math.sin(Date.now()/300)*0.07;
-  document.getElementById('vu').style.width = (v*wobble)+'%';
-},120);
+refresh(); setInterval(refresh,4000);
 </script>
 </body>
 </html>
