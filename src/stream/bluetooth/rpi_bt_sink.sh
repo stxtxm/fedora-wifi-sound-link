@@ -127,16 +127,27 @@ case "$ACTION" in
       if kill -0 "$OLD_PID" 2>/dev/null; then kill "$OLD_PID" 2>/dev/null || true; fi
     fi
     nohup bash -c '
+      DEVICE_MAC=30:E0:44:79:F6:EA
+      NEXT_RETRY=0
+      RETRY_DELAY=15
       while true; do
         bluetoothctl power on >/dev/null 2>&1 || true
-        for DEVICE_MAC in $(bluetoothctl devices 2>/dev/null | awk "{print \$2}"); do
-          DEVICE_INFO=$(bluetoothctl info "$DEVICE_MAC" 2>/dev/null || true)
-          if printf "%s\n" "$DEVICE_INFO" | grep -q "Paired: yes" &&
-             ! printf "%s\n" "$DEVICE_INFO" | grep -q "Connected: yes"; then
-            bluetoothctl connect "$DEVICE_MAC" >>/tmp/bt_watchdog.log 2>&1 || true
+        NOW=$(date +%s)
+        DEVICE_INFO=$(bluetoothctl info "$DEVICE_MAC" 2>/dev/null || true)
+        if printf "%s\n" "$DEVICE_INFO" | grep -q "Paired: yes" &&
+           ! printf "%s\n" "$DEVICE_INFO" | grep -q "Connected: yes" &&
+           [ "$NOW" -ge "$NEXT_RETRY" ]; then
+          if bluetoothctl connect "$DEVICE_MAC" >>/tmp/bt_watchdog.log 2>&1; then
+            RETRY_DELAY=15
+            NEXT_RETRY=$((NOW + RETRY_DELAY))
+          else
+            # Let BlueZ and Android finish their teardown before retrying.
+            NEXT_RETRY=$((NOW + RETRY_DELAY))
+            RETRY_DELAY=$((RETRY_DELAY * 2))
+            [ "$RETRY_DELAY" -gt 120 ] && RETRY_DELAY=120
           fi
-        done
-        sleep 15
+        fi
+        sleep 5
       done
     ' >> /tmp/bt_watchdog.log 2>&1 &
     echo "$!" > "$BT_WATCHDOG_PID_FILE"

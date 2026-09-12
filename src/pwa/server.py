@@ -8,6 +8,13 @@ BASE = Path(__file__).parent
 STATIC = BASE / "static"
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="")
 
+@app.after_request
+def disable_stale_browser_cache(response):
+    if request.path in {"/", "/index.html", "/sw.js", "/manifest.json"}:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 def run(cmd, timeout=5):
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
