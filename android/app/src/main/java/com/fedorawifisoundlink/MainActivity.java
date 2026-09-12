@@ -23,30 +23,30 @@ public class MainActivity extends AppCompatActivity {
     private boolean isOn = false;
     private BluetoothDevice piDevice;
 
+    private boolean hasBluetoothPermissions() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+        }
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED
+            && ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         // Permissions Android 12+
-        String[] perms = {
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        };
+        String[] perms = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+            ? new String[] { Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN }
+            : new String[] { Manifest.permission.ACCESS_FINE_LOCATION };
         for (String p : perms) {
             if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, perms, 1);
                 break;
             }
-        }
-
-        try {
-            BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
-            if (bm != null) btAdapter = bm.getAdapter();
-            else btAdapter = BluetoothAdapter.getDefaultAdapter();
-        } catch (Exception e) { btAdapter = null; }
-        if (btAdapter == null) {
-            // Pas de Bluetooth ou permission non accordée - on continue sans crash, l'UI s'affichera et demandera d'activer
         }
 
         // UI programmatically - responsive, dark, compact
@@ -123,31 +123,32 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(root);
 
-        // Init A2DP proxy - avec garde null pour Pixel sans permission
-        try {
-            if (btAdapter != null) {
-                btAdapter.getProfileProxy(this, new BluetoothProfile.ServiceListener() {
-                    public void onServiceConnected(int profile, BluetoothProfile proxy) {
-                        if (profile == BluetoothProfile.A2DP) {
-                            a2dpProxy = (BluetoothA2dp) proxy;
-                            updateStatus();
-                        }
-                    }
-                    public void onServiceDisconnected(int profile) { a2dpProxy = null; }
-                }, BluetoothProfile.A2DP);
-            }
-        } catch (SecurityException se) { /* permission non accordée, on attend l'user */ } catch (Exception e) {}
-
-        // Register receiver for bond state
-        try {
-            IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-            filter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
-            filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
-            filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-            registerReceiver(btReceiver, filter);
-        } catch (Exception e) {}
-
+        initializeBluetooth();
         updateStatus();
+    }
+
+    private void initializeBluetooth() {
+        if (!hasBluetoothPermissions()) return;
+
+        BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
+        btAdapter = bm != null ? bm.getAdapter() : BluetoothAdapter.getDefaultAdapter();
+        if (btAdapter == null) return;
+
+        btAdapter.getProfileProxy(this, new BluetoothProfile.ServiceListener() {
+            public void onServiceConnected(int profile, BluetoothProfile proxy) {
+                if (profile == BluetoothProfile.A2DP) {
+                    a2dpProxy = (BluetoothA2dp) proxy;
+                    updateStatus();
+                }
+            }
+            public void onServiceDisconnected(int profile) { a2dpProxy = null; }
+        }, BluetoothProfile.A2DP);
+
+        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        filter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        ContextCompat.registerReceiver(this, btReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     private final BroadcastReceiver btReceiver = new BroadcastReceiver() {
@@ -162,6 +163,11 @@ public class MainActivity extends AppCompatActivity {
     };
 
     private void updateStatus() {
+        if (!hasBluetoothPermissions()) {
+            statusText.setText("Autorisation Bluetooth requise");
+            toggleBtn.setText("Autoriser Bluetooth");
+            return;
+        }
         if (btAdapter == null || !btAdapter.isEnabled()) {
             statusText.setText("Bluetooth désactivé sur le téléphone");
             toggleBtn.setText("Activer Bluetooth");
@@ -222,6 +228,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void connect() {
+        if (!hasBluetoothPermissions()) {
+            ActivityCompat.requestPermissions(this,
+                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                    ? new String[] { Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN }
+                    : new String[] { Manifest.permission.ACCESS_FINE_LOCATION }, 1);
+            return;
+        }
         if (btAdapter == null) return;
         if (!btAdapter.isEnabled()) {
             btAdapter.enable();
@@ -304,7 +317,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         };
-        registerReceiver(disc, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+        ContextCompat.registerReceiver(this, disc,
+            new IntentFilter(BluetoothDevice.ACTION_FOUND), ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     private void disconnect() {
@@ -328,17 +342,8 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         // Relance l'init après autorisation
         try {
-            BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
-            if (bm != null) btAdapter = bm.getAdapter();
-            if (btAdapter != null) {
-                btAdapter.getProfileProxy(this, new BluetoothProfile.ServiceListener() {
-                    public void onServiceConnected(int profile, BluetoothProfile proxy) {
-                        if (profile == BluetoothProfile.A2DP) { a2dpProxy = (BluetoothA2dp) proxy; updateStatus(); }
-                    }
-                    public void onServiceDisconnected(int profile) { a2dpProxy = null; }
-                }, BluetoothProfile.A2DP);
-            }
-        } catch (Exception e) {}
+            initializeBluetooth();
+        } catch (SecurityException ignored) {}
         updateStatus();
     }
 
