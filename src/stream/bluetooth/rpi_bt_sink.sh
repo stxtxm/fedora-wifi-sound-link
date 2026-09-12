@@ -25,16 +25,22 @@ case "$ACTION" in
     echo "Sink AudioBox: $SINK"
     wpctl status 2>&1 | grep -A5 "Sinks:" | head -15
     echo "En attente de connexion Bluetooth depuis PC..."
-    echo "WirePlumber route auto bluez_input -> AudioBox, sinon lance: $0 route"
+    echo "WirePlumber route auto Bluetooth A2DP -> AudioBox, sinon lance: $0 route"
     # Lance un watcher en arrière-plan pour auto-route
     nohup bash -c 'while true; do
-      BT_SRC=$(pactl list short sources 2>&1 | grep bluez | grep input | head -1 | awk "{print \$2}")
-      SINK=$(pactl get-default-sink 2>&1)
-      if [ -n "$BT_SRC" ] && [ -n "$SINK" ]; then
-        if ! pactl list short modules 2>&1 | grep -q "source=$BT_SRC.*sink=$SINK"; then
-          echo "[watcher] Routing $BT_SRC -> $SINK"
-          pactl load-module module-loopback source="$BT_SRC" sink="$SINK" latency_msec=50 2>&1 | head -3
-        fi
+      BT_CARD=$(pactl list short cards 2>/dev/null | awk "\$2 ~ /^bluez_card/ {print \$2; exit}")
+      if [ -n "$BT_CARD" ]; then
+        pactl set-card-profile "$BT_CARD" a2dp-sink >/dev/null 2>&1 || true
+      fi
+      BT_SRC=$(pactl list short sources 2>/dev/null | awk "\$2 ~ /^bluez_(input|source)/ {print \$2; exit}")
+      SINK=$(pactl list short sinks 2>/dev/null | awk "\$2 ~ /AudioBox/ {print \$2; exit}")
+      if [ -z "$SINK" ]; then
+        SINK=$(pactl get-default-sink 2>/dev/null | tr -d " ")
+      fi
+      if [ -n "$BT_SRC" ] && [ -n "$SINK" ] &&
+         ! pactl list short modules 2>/dev/null | grep -q "source=$BT_SRC.*sink=$SINK"; then
+        echo "[watcher] Routing $BT_SRC -> $SINK"
+        pactl load-module module-loopback source="$BT_SRC" sink="$SINK" latency_msec=100 adjust_time=1 >/dev/null 2>&1 || true
       fi
       sleep 2
     done' > /tmp/bt_watcher.log 2>&1 &
@@ -60,7 +66,7 @@ case "$ACTION" in
     ;;
   route)
     # Force route BT source -> AudioBox sink si WirePlumber ne le fait pas
-    BT_SOURCE=$(pactl list short sources 2>&1 | grep bluez | grep input | head -1 | awk '{print $2}')
+    BT_SOURCE=$(pactl list short sources 2>&1 | awk '$2 ~ /^bluez_(input|source)/ {print $2; exit}')
     SINK=$(pactl list short sinks 2>&1 | grep AudioBox | head -1 | awk '{print $2}')
     if [ -z "$SINK" ]; then SINK=$(pactl get-default-sink 2>&1); fi
     if [ -n "$BT_SOURCE" ] && [ -n "$SINK" ]; then
