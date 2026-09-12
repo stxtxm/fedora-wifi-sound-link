@@ -5,6 +5,7 @@ import android.content.*;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.media.AudioManager;
 import android.widget.*;
 import android.view.Gravity;
 import android.graphics.Color;
@@ -24,6 +25,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isOn = false;
     private BluetoothDevice piDevice;
     private boolean waitingForSystemConnection;
+    private AudioManager audioManager;
 
     private boolean hasBluetoothPermissions() {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
@@ -39,6 +41,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
 
         // Permissions Android 12+
         String[] perms = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
@@ -107,6 +110,27 @@ public class MainActivity extends AppCompatActivity {
         toggleBtn.setOnClickListener(v -> toggle());
         root.addView(toggleBtn);
 
+        TextView volumeLabel = new TextView(this);
+        volumeLabel.setText("VOLUME TÉLÉPHONE / BLUETOOTH");
+        volumeLabel.setTextSize(11);
+        volumeLabel.setTextColor(Color.parseColor("#8b8fa3"));
+        volumeLabel.setPadding(0, 8, 0, 0);
+        root.addView(volumeLabel);
+
+        SeekBar volumeSlider = new SeekBar(this);
+        volumeSlider.setMax(100);
+        volumeSlider.setProgress(getMediaVolumePercent());
+        volumeSlider.setContentDescription("Volume Bluetooth");
+        volumeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) setMediaVolumePercent(progress);
+            }
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        root.addView(volumeSlider, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
         TextView hint = new TextView(this);
         hint.setText("Le son du téléphone sortira sur les KRK via le Pi en Bluetooth.\nPas besoin de WiFi. Le Pi doit être allumé.");
         hint.setTextSize(11);
@@ -127,6 +151,20 @@ public class MainActivity extends AppCompatActivity {
 
         initializeBluetooth();
         updateStatus();
+    }
+
+    private int getMediaVolumePercent() {
+        if (audioManager == null) return 50;
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        if (max == 0) return 0;
+        return Math.round(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max);
+    }
+
+    private void setMediaVolumePercent(int percent) {
+        if (audioManager == null) return;
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC,
+            Math.round(Math.max(0, Math.min(100, percent)) * max / 100f), 0);
     }
 
     @Override
