@@ -205,14 +205,14 @@ public class MainActivity extends AppCompatActivity {
             toggleBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#7c5cff")));
             isOn = false;
         }
+    }
 
-        private boolean isA2dpConnected(BluetoothDevice device) {
-            if (a2dpProxy == null || device == null) return false;
-            try {
-                return a2dpProxy.getConnectedDevices().contains(device);
-            } catch (SecurityException e) {
-                return false;
-            }
+    private boolean isA2dpConnected(BluetoothDevice device) {
+        if (a2dpProxy == null || device == null) return false;
+        try {
+            return a2dpProxy.getConnectedDevices().contains(device);
+        } catch (SecurityException e) {
+            return false;
         }
     }
 
