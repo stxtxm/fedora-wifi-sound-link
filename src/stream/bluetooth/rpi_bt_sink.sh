@@ -22,9 +22,11 @@ case "$ACTION" in
     sleep 1
     bluetoothctl default-agent 2>&1 | head -3 || echo "agent déjà par défaut"
     bluetoothctl system-alias raspberrypi 2>/dev/null || true
-    while read -r DEVICE_MAC; do
-      [ -n "$DEVICE_MAC" ] && bluetoothctl trust "$DEVICE_MAC" >/dev/null 2>&1 || true
-    done < <(bluetoothctl paired-devices 2>/dev/null | awk '/Device/ {print $2}')
+    for DEVICE_MAC in $(bluetoothctl devices 2>/dev/null | awk '{print $2}'); do
+      if bluetoothctl info "$DEVICE_MAC" 2>/dev/null | grep -q "Paired: yes"; then
+        bluetoothctl trust "$DEVICE_MAC" >/dev/null 2>&1 || true
+      fi
+    done
     echo "Discoverable: $(bluetoothctl show 2>&1 | grep Discoverable)"
     echo "Pairable: $(bluetoothctl show 2>&1 | grep Pairable)"
     SINK=$(pactl get-default-sink 2>&1)
@@ -91,13 +93,13 @@ case "$ACTION" in
     nohup bash -c '
       while true; do
         bluetoothctl power on >/dev/null 2>&1 || true
-        while read -r DEVICE_MAC; do
-          [ -z "$DEVICE_MAC" ] && continue
+        for DEVICE_MAC in $(bluetoothctl devices 2>/dev/null | awk "{print \$2}"); do
           DEVICE_INFO=$(bluetoothctl info "$DEVICE_MAC" 2>/dev/null || true)
-          if ! printf "%s\n" "$DEVICE_INFO" | grep -q "Connected: yes"; then
+          if printf "%s\n" "$DEVICE_INFO" | grep -q "Paired: yes" &&
+             ! printf "%s\n" "$DEVICE_INFO" | grep -q "Connected: yes"; then
             bluetoothctl connect "$DEVICE_MAC" >>/tmp/bt_watchdog.log 2>&1 || true
           fi
-        done < <(bluetoothctl paired-devices 2>/dev/null | awk "/Device/ {print \$2}")
+        done
         sleep 15
       done
     ' >> /tmp/bt_watchdog.log 2>&1 &
@@ -117,7 +119,7 @@ case "$ACTION" in
   status)
     bluetoothctl show 2>&1 | grep -E "Powered|Discoverable|Pairable|Name"
     bluetoothctl devices 2>&1 | head -10
-    bluetoothctl paired-devices 2>&1 | head -10 || bluetoothctl devices Paired 2>&1 | head -10
+    bluetoothctl devices 2>&1 | head -10
     pactl list short sinks 2>&1 | head -10
     pactl list short sources 2>&1 | head -10
     wpctl status 2>&1 | head -40
