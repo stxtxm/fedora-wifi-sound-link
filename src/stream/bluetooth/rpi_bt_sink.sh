@@ -5,6 +5,7 @@ ACTION="${1:-setup}" # setup, discoverable, status, route
 case "$ACTION" in
   setup)
     WATCHER_PID_FILE=/tmp/krk-bt-watcher.pid
+    BT_WATCHDOG_PID_FILE=/tmp/krk-bt-watchdog.pid
     echo "=== RPi BT Sink setup ==="
     systemctl --user is-active pipewire 2>&1 | head -3
     systemctl --user is-active wireplumber 2>&1 | head -3
@@ -20,6 +21,10 @@ case "$ACTION" in
     nohup bluetoothctl --agent NoInputNoOutput > /tmp/bt_agent.log 2>&1 &
     sleep 1
     bluetoothctl default-agent 2>&1 | head -3 || echo "agent déjà par défaut"
+    bluetoothctl system-alias raspberrypi 2>/dev/null || true
+    while read -r DEVICE_MAC; do
+      [ -n "$DEVICE_MAC" ] && bluetoothctl trust "$DEVICE_MAC" >/dev/null 2>&1 || true
+    done < <(bluetoothctl paired-devices 2>/dev/null | awk '/Device/ {print $2}')
     echo "Discoverable: $(bluetoothctl show 2>&1 | grep Discoverable)"
     echo "Pairable: $(bluetoothctl show 2>&1 | grep Pairable)"
     SINK=$(pactl get-default-sink 2>&1)
@@ -79,6 +84,25 @@ case "$ACTION" in
     done' > /tmp/bt_watcher.log 2>&1 &
     echo "$!" > "$WATCHER_PID_FILE"
     echo "Watcher Bluetooth -> KRK lancé (PID $!)"
+    if [ -f "$BT_WATCHDOG_PID_FILE" ]; then
+      OLD_PID=$(cat "$BT_WATCHDOG_PID_FILE")
+      if kill -0 "$OLD_PID" 2>/dev/null; then kill "$OLD_PID" 2>/dev/null || true; fi
+    fi
+    nohup bash -c '
+      while true; do
+        bluetoothctl power on >/dev/null 2>&1 || true
+        while read -r DEVICE_MAC; do
+          [ -z "$DEVICE_MAC" ] && continue
+          DEVICE_INFO=$(bluetoothctl info "$DEVICE_MAC" 2>/dev/null || true)
+          if ! printf "%s\n" "$DEVICE_INFO" | grep -q "Connected: yes"; then
+            bluetoothctl connect "$DEVICE_MAC" >>/tmp/bt_watchdog.log 2>&1 || true
+          fi
+        done < <(bluetoothctl paired-devices 2>/dev/null | awk "/Device/ {print \$2}")
+        sleep 15
+      done
+    ' >> /tmp/bt_watchdog.log 2>&1 &
+    echo "$!" > "$BT_WATCHDOG_PID_FILE"
+    echo "Watchdog Bluetooth actif (PID $!)"
     ;;
   discoverable)
     bluetoothctl discoverable on
@@ -97,6 +121,16 @@ case "$ACTION" in
     pactl list short sinks 2>&1 | head -10
     pactl list short sources 2>&1 | head -10
     wpctl status 2>&1 | head -40
+    echo "Watchers:"
+    for PID_FILE in /tmp/krk-bt-watcher.pid /tmp/krk-bt-watchdog.pid; do
+      if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        echo "  $PID_FILE: actif ($(cat "$PID_FILE"))"
+      else
+        echo "  $PID_FILE: arrêté"
+      fi
+    done
+    echo "Derniers événements watchdog:"
+    tail -10 /tmp/bt_watchdog.log 2>/dev/null || true
     ;;
   route)
     # Force route BT source -> AudioBox sink si WirePlumber ne le fait pas
