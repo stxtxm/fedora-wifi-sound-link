@@ -36,7 +36,10 @@ case "$ACTION" in
       if kill -0 "$OLD_PID" 2>/dev/null; then kill "$OLD_PID" 2>/dev/null || true; fi
     fi
     # Lance un watcher en arrière-plan pour auto-route
-    nohup bash -c 'while true; do
+    nohup bash -c 'LOOPBACK_ID=
+    LOOPBACK_SOURCE=
+    LOOPBACK_SINK=
+    while true; do
       BT_CARD=$(pactl list short cards 2>/dev/null | awk "\$2 ~ /^bluez_card/ {print \$2; exit}")
       if [ -n "$BT_CARD" ]; then
         # Changing the profile repeatedly renegotiates A2DP and disconnects some phones.
@@ -52,10 +55,25 @@ case "$ACTION" in
       if [ -z "$SINK" ]; then
         SINK=$(pactl get-default-sink 2>/dev/null | tr -d " ")
       fi
-      if [ -n "$BT_SRC" ] && [ -n "$SINK" ] &&
-         ! pactl list short modules 2>/dev/null | grep -q "source=$BT_SRC.*sink=$SINK"; then
+      if [ -n "$LOOPBACK_ID" ] &&
+         { [ "$BT_SRC" != "$LOOPBACK_SOURCE" ] || [ "$SINK" != "$LOOPBACK_SINK" ]; }; then
+        pactl unload-module "$LOOPBACK_ID" >/dev/null 2>&1 || true
+        LOOPBACK_ID=
+        LOOPBACK_SOURCE=
+        LOOPBACK_SINK=
+      fi
+      if [ -z "$BT_SRC" ] || [ -z "$SINK" ]; then
+        if [ -n "$LOOPBACK_ID" ]; then
+          pactl unload-module "$LOOPBACK_ID" >/dev/null 2>&1 || true
+          LOOPBACK_ID=
+          LOOPBACK_SOURCE=
+          LOOPBACK_SINK=
+        fi
+      elif [ -z "$LOOPBACK_ID" ]; then
         echo "[watcher] Routing $BT_SRC -> $SINK"
-        pactl load-module module-loopback source="$BT_SRC" sink="$SINK" latency_msec=100 adjust_time=1 >/dev/null 2>&1 || true
+        LOOPBACK_ID=$(pactl load-module module-loopback source="$BT_SRC" sink="$SINK" latency_msec=100 adjust_time=1 2>/dev/null || true)
+        LOOPBACK_SOURCE=$BT_SRC
+        LOOPBACK_SINK=$SINK
       fi
       sleep 2
     done' > /tmp/bt_watcher.log 2>&1 &

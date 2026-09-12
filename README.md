@@ -175,6 +175,21 @@ APK WebView qui encapsule la PWA + permissions Bluetooth.
 - CI build l'APK automatiquement (GitHub Actions)
 - Release: `KRKLink.apk` dans https://github.com/stxtxm/fedora-wifi-sound-link/releases
 
+Pour les déconnexions après quelques secondes, mettre à jour le script Bluetooth du Pi
+et relancer `setup`. Le watcher ne doit exister qu'une seule fois :
+
+```bash
+cd /home/timo/dev/fedora-wifi-sound-link
+git pull origin fix/pixel-crash
+./src/stream/bluetooth/rpi_bt_sink.sh setup
+./src/stream/bluetooth/rpi_bt_sink.sh status
+```
+
+Le statut doit afficher le Pi alimenté et une carte `bluez_card` en profil
+`a2dp-sink` après la connexion du téléphone. Le paquet PipeWire Bluetooth doit
+être installé sur le Pi (`pipewire-pulse`, `wireplumber` et le paquet
+`libspa-0.2-bluetooth` ou équivalent de la distribution).
+
 ```bash
 adb install KRKLink.apk
 # Ouvre l'app → elle charge http://192.168.1.101:8080
