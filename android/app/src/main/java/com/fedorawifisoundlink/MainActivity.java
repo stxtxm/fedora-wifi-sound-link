@@ -4,6 +4,8 @@ import android.bluetooth.*;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.provider.Settings;
+import android.media.AudioManager;
 import android.widget.*;
 import android.view.Gravity;
 import android.graphics.Color;
@@ -22,26 +24,35 @@ public class MainActivity extends AppCompatActivity {
     private Button toggleBtn;
     private boolean isOn = false;
     private BluetoothDevice piDevice;
+    private boolean waitingForSystemConnection;
+    private AudioManager audioManager;
+
+    private boolean hasBluetoothPermissions() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+        }
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED
+            && ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+                == PackageManager.PERMISSION_GRANTED;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
 
         // Permissions Android 12+
-        String[] perms = {
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        };
+        String[] perms = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+            ? new String[] { Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN }
+            : new String[] { Manifest.permission.ACCESS_FINE_LOCATION };
         for (String p : perms) {
             if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, perms, 1);
                 break;
             }
         }
-
-        BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
-        btAdapter = bm.getAdapter();
 
         // UI programmatically - responsive, dark, compact
         LinearLayout root = new LinearLayout(this);
@@ -99,6 +110,27 @@ public class MainActivity extends AppCompatActivity {
         toggleBtn.setOnClickListener(v -> toggle());
         root.addView(toggleBtn);
 
+        TextView volumeLabel = new TextView(this);
+        volumeLabel.setText("VOLUME TÉLÉPHONE / BLUETOOTH");
+        volumeLabel.setTextSize(11);
+        volumeLabel.setTextColor(Color.parseColor("#8b8fa3"));
+        volumeLabel.setPadding(0, 8, 0, 0);
+        root.addView(volumeLabel);
+
+        SeekBar volumeSlider = new SeekBar(this);
+        volumeSlider.setMax(100);
+        volumeSlider.setProgress(getMediaVolumePercent());
+        volumeSlider.setContentDescription("Volume Bluetooth");
+        volumeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) setMediaVolumePercent(progress);
+            }
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        root.addView(volumeSlider, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
         TextView hint = new TextView(this);
         hint.setText("Le son du téléphone sortira sur les KRK via le Pi en Bluetooth.\nPas besoin de WiFi. Le Pi doit être allumé.");
         hint.setTextSize(11);
@@ -117,7 +149,42 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(root);
 
-        // Init A2DP proxy
+        initializeBluetooth();
+        updateStatus();
+    }
+
+    private int getMediaVolumePercent() {
+        if (audioManager == null) return 50;
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        if (max == 0) return 0;
+        return Math.round(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max);
+    }
+
+    private void setMediaVolumePercent(int percent) {
+        if (audioManager == null) return;
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC,
+            Math.round(Math.max(0, Math.min(100, percent)) * max / 100f), 0);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (statusText != null) {
+            statusText.postDelayed(() -> {
+                waitingForSystemConnection = false;
+                updateStatus();
+            }, 500);
+        }
+    }
+
+    private void initializeBluetooth() {
+        if (!hasBluetoothPermissions()) return;
+
+        BluetoothManager bm = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
+        btAdapter = bm != null ? bm.getAdapter() : BluetoothAdapter.getDefaultAdapter();
+        if (btAdapter == null) return;
+
         btAdapter.getProfileProxy(this, new BluetoothProfile.ServiceListener() {
             public void onServiceConnected(int profile, BluetoothProfile proxy) {
                 if (profile == BluetoothProfile.A2DP) {
@@ -128,14 +195,11 @@ public class MainActivity extends AppCompatActivity {
             public void onServiceDisconnected(int profile) { a2dpProxy = null; }
         }, BluetoothProfile.A2DP);
 
-        // Register receiver for bond state
         IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
         filter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
         filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
         filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-        registerReceiver(btReceiver, filter);
-
-        updateStatus();
+        ContextCompat.registerReceiver(this, btReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     private final BroadcastReceiver btReceiver = new BroadcastReceiver() {
@@ -150,6 +214,11 @@ public class MainActivity extends AppCompatActivity {
     };
 
     private void updateStatus() {
+        if (!hasBluetoothPermissions()) {
+            statusText.setText("Autorisation Bluetooth requise");
+            toggleBtn.setText("Autoriser Bluetooth");
+            return;
+        }
         if (btAdapter == null || !btAdapter.isEnabled()) {
             statusText.setText("Bluetooth désactivé sur le téléphone");
             toggleBtn.setText("Activer Bluetooth");
@@ -163,22 +232,9 @@ public class MainActivity extends AppCompatActivity {
             if (d.getAddress().equalsIgnoreCase(PI_MAC) || PI_NAME.equalsIgnoreCase(d.getName())) {
                 pairedFound = true;
                 piDevice = d;
-                // Check A2DP connection
-                if (a2dpProxy != null) {
-                    try {
-                        // Use reflection for hidden isConnected
-                        // Fallback: check ACL connected via getBondState + isConnected via device
-                        connected = d.getBondState() == BluetoothDevice.BOND_BONDED;
-                        // Try to check via a2dpProxy.getConnectedDevices()
-                        if (a2dpProxy.getConnectedDevices().contains(d)) connected = true;
-                    } catch (Exception e) {}
-                }
+                connected = isA2dpConnected(d);
                 break;
             }
-        }
-        // Also check via getConnectedDevices
-        if (a2dpProxy != null && piDevice != null && a2dpProxy.getConnectedDevices().contains(piDevice)) {
-            connected = true;
         }
         if (connected) {
             statusText.setText("● Connecté à raspberrypi → son sur KRK ✓");
@@ -201,6 +257,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private boolean isA2dpConnected(BluetoothDevice device) {
+        if (a2dpProxy == null || device == null) return false;
+        try {
+            return a2dpProxy.getConnectedDevices().contains(device);
+        } catch (SecurityException e) {
+            return false;
+        }
+    }
+
     private void toggle() {
         if (isOn) {
             disconnect();
@@ -210,6 +275,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void connect() {
+        if (!hasBluetoothPermissions()) {
+            ActivityCompat.requestPermissions(this,
+                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                    ? new String[] { Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN }
+                    : new String[] { Manifest.permission.ACCESS_FINE_LOCATION }, 1);
+            return;
+        }
         if (btAdapter == null) return;
         if (!btAdapter.isEnabled()) {
             btAdapter.enable();
@@ -227,25 +299,10 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         if (target != null) {
-            statusText.setText("Connexion à raspberrypi...");
-            // Try A2DP connect via reflection (hidden API)
-            try {
-                if (a2dpProxy != null) {
-                    // Use reflection to call connect
-                    java.lang.reflect.Method m = a2dpProxy.getClass().getMethod("connect", BluetoothDevice.class);
-                    m.invoke(a2dpProxy, target);
-                    statusText.setText("Connexion A2DP en cours...");
-                } else {
-                    target.createBond();
-                }
-            } catch (Exception e) {
-                // Fallback: just createBond and let system handle
-                try { target.createBond(); } catch (Exception ex) {}
-                statusText.setText("Appairage en cours... confirme sur Pi si besoin");
-            }
-            // Also ensure Pi is discoverable via PWA if on same WiFi (optional)
-            // Post delayed update
-            statusText.postDelayed(() -> updateStatus(), 3000);
+            piDevice = target;
+            waitingForSystemConnection = true;
+            statusText.setText("Ouvre les réglages et sélectionne raspberrypi");
+            startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
             return;
         }
         // Not paired -> start discovery
@@ -292,29 +349,35 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         };
-        registerReceiver(disc, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+        ContextCompat.registerReceiver(this, disc,
+            new IntentFilter(BluetoothDevice.ACTION_FOUND), ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     private void disconnect() {
         if (piDevice != null && a2dpProxy != null) {
-            try {
-                java.lang.reflect.Method m = a2dpProxy.getClass().getMethod("disconnect", BluetoothDevice.class);
-                m.invoke(a2dpProxy, piDevice);
-                statusText.setText("Déconnexion...");
-            } catch (Exception e) {
-                statusText.setText("Déconnecté (son repasse sur tel)");
-            }
+            statusText.setText("Déconnecte raspberrypi dans les réglages Bluetooth");
+            startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
         } else {
             statusText.setText("Déconnecté");
         }
         isOn = false;
+        statusText.postDelayed(() -> updateStatus(), 1000);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        // Relance l'init après autorisation
+        try {
+            initializeBluetooth();
+        } catch (SecurityException ignored) {}
         updateStatus();
     }
 
     @Override
     protected void onDestroy() {
         try { unregisterReceiver(btReceiver); } catch (Exception e) {}
-        if (a2dpProxy != null) btAdapter.closeProfileProxy(BluetoothProfile.A2DP, a2dpProxy);
+        try { if (a2dpProxy != null && btAdapter != null) btAdapter.closeProfileProxy(BluetoothProfile.A2DP, a2dpProxy); } catch (Exception e) {}
         super.onDestroy();
     }
 }
