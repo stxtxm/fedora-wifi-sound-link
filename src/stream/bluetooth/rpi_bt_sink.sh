@@ -4,6 +4,7 @@ set -e
 ACTION="${1:-setup}" # setup, discoverable, status, route
 case "$ACTION" in
   setup)
+    WATCHER_PID_FILE=/tmp/krk-bt-watcher.pid
     echo "=== RPi BT Sink setup ==="
     systemctl --user is-active pipewire 2>&1 | head -3
     systemctl --user is-active wireplumber 2>&1 | head -3
@@ -26,11 +27,22 @@ case "$ACTION" in
     wpctl status 2>&1 | grep -A5 "Sinks:" | head -15
     echo "En attente de connexion Bluetooth depuis PC..."
     echo "WirePlumber route auto Bluetooth A2DP -> AudioBox, sinon lance: $0 route"
+    # Replace an older watcher; duplicate loopbacks can destabilize the Bluetooth source.
+    if [ -f "$WATCHER_PID_FILE" ]; then
+      OLD_PID=$(cat "$WATCHER_PID_FILE")
+      if kill -0 "$OLD_PID" 2>/dev/null; then kill "$OLD_PID" 2>/dev/null || true; fi
+    fi
     # Lance un watcher en arrière-plan pour auto-route
     nohup bash -c 'while true; do
       BT_CARD=$(pactl list short cards 2>/dev/null | awk "\$2 ~ /^bluez_card/ {print \$2; exit}")
       if [ -n "$BT_CARD" ]; then
-        pactl set-card-profile "$BT_CARD" a2dp-sink >/dev/null 2>&1 || true
+        # Changing the profile repeatedly renegotiates A2DP and disconnects some phones.
+        BT_PROFILE=$(pactl get-card-profile "$BT_CARD" 2>/dev/null || true)
+        if [ "$BT_PROFILE" != "a2dp-sink" ]; then
+          pactl set-card-profile "$BT_CARD" a2dp-sink >/dev/null 2>&1 || true
+          sleep 1
+          continue
+        fi
       fi
       BT_SRC=$(pactl list short sources 2>/dev/null | awk "\$2 ~ /^bluez_(input|source)/ {print \$2; exit}")
       SINK=$(pactl list short sinks 2>/dev/null | awk "\$2 ~ /AudioBox/ {print \$2; exit}")
@@ -44,6 +56,7 @@ case "$ACTION" in
       fi
       sleep 2
     done' > /tmp/bt_watcher.log 2>&1 &
+    echo "$!" > "$WATCHER_PID_FILE"
     echo "Watcher Bluetooth -> KRK lancé (PID $!)"
     ;;
   discoverable)
