@@ -189,8 +189,10 @@ git pull origin fix/pixel-crash
 ./src/stream/bluetooth/rpi_bt_sink.sh status
 ```
 
-Le statut doit afficher le Pi alimenté et une carte `bluez_card` en profil
-`a2dp-sink` après la connexion du téléphone. Le paquet PipeWire Bluetooth doit
+Le script utilise automatiquement la session PipeWire qui possède l'AudioBox
+et la carte Bluetooth (la session `lightdm` sur le Pi). Le statut doit afficher
+une carte `bluez_card` et une source Bluetooth après activation de **Audio
+multimédia** sur le téléphone. Le paquet PipeWire Bluetooth doit
 être installé sur le Pi (`pipewire-pulse`, `wireplumber` et le paquet
 `libspa-0.2-bluetooth` ou équivalent de la distribution).
 
