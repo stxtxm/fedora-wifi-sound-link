@@ -28,6 +28,9 @@ case "$ACTION" in
     echo "En attente de connexion Bluetooth depuis PC..."
     echo "WirePlumber route auto Bluetooth A2DP -> AudioBox, sinon lance: $0 route"
     # Replace an older watcher; duplicate loopbacks can destabilize the Bluetooth source.
+    while read -r OLD_PID; do
+      [ "$OLD_PID" = "$$" ] || kill "$OLD_PID" 2>/dev/null || true
+    done < <(pgrep -f '[b]t_watcher.log' || true)
     if [ -f "$WATCHER_PID_FILE" ]; then
       OLD_PID=$(cat "$WATCHER_PID_FILE")
       if kill -0 "$OLD_PID" 2>/dev/null; then kill "$OLD_PID" 2>/dev/null || true; fi
