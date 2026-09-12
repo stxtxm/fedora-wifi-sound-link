@@ -4,6 +4,7 @@ import android.bluetooth.*;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.widget.*;
 import android.view.Gravity;
 import android.graphics.Color;
@@ -181,22 +182,9 @@ public class MainActivity extends AppCompatActivity {
             if (d.getAddress().equalsIgnoreCase(PI_MAC) || PI_NAME.equalsIgnoreCase(d.getName())) {
                 pairedFound = true;
                 piDevice = d;
-                // Check A2DP connection
-                if (a2dpProxy != null) {
-                    try {
-                        // Use reflection for hidden isConnected
-                        // Fallback: check ACL connected via getBondState + isConnected via device
-                        connected = d.getBondState() == BluetoothDevice.BOND_BONDED;
-                        // Try to check via a2dpProxy.getConnectedDevices()
-                        if (a2dpProxy.getConnectedDevices().contains(d)) connected = true;
-                    } catch (Exception e) {}
-                }
+                connected = isA2dpConnected(d);
                 break;
             }
-        }
-        // Also check via getConnectedDevices
-        if (a2dpProxy != null && piDevice != null && a2dpProxy.getConnectedDevices().contains(piDevice)) {
-            connected = true;
         }
         if (connected) {
             statusText.setText("● Connecté à raspberrypi → son sur KRK ✓");
@@ -216,6 +204,15 @@ public class MainActivity extends AppCompatActivity {
             toggleBtn.setText("▶  ACTIVER SORTIE KRK");
             toggleBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#7c5cff")));
             isOn = false;
+        }
+
+        private boolean isA2dpConnected(BluetoothDevice device) {
+            if (a2dpProxy == null || device == null) return false;
+            try {
+                return a2dpProxy.getConnectedDevices().contains(device);
+            } catch (SecurityException e) {
+                return false;
+            }
         }
     }
 
@@ -253,23 +250,21 @@ public class MainActivity extends AppCompatActivity {
         }
         if (target != null) {
             statusText.setText("Connexion à raspberrypi...");
-            // Try A2DP connect via reflection (hidden API)
-            try {
-                if (a2dpProxy != null) {
-                    // Use reflection to call connect
-                    java.lang.reflect.Method m = a2dpProxy.getClass().getMethod("connect", BluetoothDevice.class);
-                    m.invoke(a2dpProxy, target);
-                    statusText.setText("Connexion A2DP en cours...");
-                } else {
-                    target.createBond();
-                }
-            } catch (Exception e) {
-                // Fallback: just createBond and let system handle
-                try { target.createBond(); } catch (Exception ex) {}
-                statusText.setText("Appairage en cours... confirme sur Pi si besoin");
+            if (a2dpProxy == null) {
+                statusText.setText("Service Bluetooth indisponible, réessaie dans un instant");
+                return;
             }
-            // Also ensure Pi is discoverable via PWA if on same WiFi (optional)
-            // Post delayed update
+
+            // Android does not expose A2DP connect publicly. Try the legacy API,
+            // then leave the user in the system Bluetooth screen if it is blocked.
+            try {
+                java.lang.reflect.Method m = a2dpProxy.getClass().getMethod("connect", BluetoothDevice.class);
+                m.invoke(a2dpProxy, target);
+                statusText.setText("Connexion A2DP en cours...");
+            } catch (Exception e) {
+                statusText.setText("Sélectionne raspberrypi dans les réglages Bluetooth");
+                startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+            }
             statusText.postDelayed(() -> updateStatus(), 3000);
             return;
         }
@@ -327,14 +322,17 @@ public class MainActivity extends AppCompatActivity {
                 java.lang.reflect.Method m = a2dpProxy.getClass().getMethod("disconnect", BluetoothDevice.class);
                 m.invoke(a2dpProxy, piDevice);
                 statusText.setText("Déconnexion...");
+                statusText.postDelayed(() -> updateStatus(), 1000);
+                return;
             } catch (Exception e) {
-                statusText.setText("Déconnecté (son repasse sur tel)");
+                statusText.setText("Déconnecte raspberrypi dans les réglages Bluetooth");
+                startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
             }
         } else {
             statusText.setText("Déconnecté");
         }
         isOn = false;
-        updateStatus();
+        statusText.postDelayed(() -> updateStatus(), 1000);
     }
 
     @Override
